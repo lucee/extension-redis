@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project default="compile" basedir=".">
+	<description>Build Redis Extension Compile</description>
+
+	<property file="build.properties"/>
+
+	<property name="lib" location="source/java/lib"/>
+	<property name="src" location="source/java/src"/>
+	<property name="temp" location="temp"/>
+	<property name="build" location="build"/>
+	<property name="dist" location="dist"/>
+
+	<buildnumber file="build.number"/>
+
+	<path id="classpath">
+		<fileset dir="${lib}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+
+		<!-- Create the time stamp -->
+		<tstamp/>
+
+		<delete dir="${temp}"/>
+		<delete dir="${dist}"/>
+
+		<!-- Create the build directory structure used by compile -->
+		<mkdir dir="${temp}"/>
+		<mkdir dir="${temp}/classes"/>
+		<mkdir dir="${temp}/jars"/>
+		<mkdir dir="${dist}"/>
+
+
+		<tstamp>
+			<format property="NOW" pattern="yyyy-MM-dd HH:mm:ss" />
+		</tstamp>
+	</target>
+
+	<target name="compile" depends="init" description="compile the source " >
+
+		<javac srcdir="${src}" target="1.7" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
+			<classpath refid="classpath" />
+		</javac>
+
+		<jar jarfile="${temp}/jars/lucee-extension-${codename}.jar" basedir="${temp}/classes" manifest="${src}/META-INF/MANIFEST.MF">
+			<manifest>
+				<attribute name="Bundle-Version" value="${bundleversion}${build.number}"/>
+				<attribute name="Built-Date" value="${NOW}"/>
+				<attribute name="Bundle-SymbolicName" value="${bundlename}"/>
+			</manifest>
+		</jar>
+
+		<delete dir="${temp}/classes"/>
+	</target>
+</project>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project default="classic" basedir=".">
+	<description>Build Redis Extension Classic</description>
+
+	<import file="build-compile.xml"/>
+
+	<target name="dist" depends="compile" description="generate the distribution">
+
+		<!-- doc.json -->
+		<echo file="${dist}/classic/doc.json">{
+"builtDate":"${NOW}",
+"version":"${bundleversion}${build.number}",
+"id":"${id}",
+"name":"${codename}",
+"codename":"${codename}",
+"label":"${label}",
+"description":"${description}",
+"type":"server",
+"author":"${author}",
+"category":"${category}"
+}
+</echo>
+
+		 <!-- copy the jar just build -->
+		<copy todir="${dist}/extension/jars">
+			<fileset dir="${temp}/jars/">
+				<include name="**/*.jar"/>
+			</fileset>
+			<fileset dir="${lib}">
+				<include name="**/*.jar"/>
+				<exclude name="**/lucee.jar"/>
+				<exclude name="**/javax.servlet.jar"/>
+				<exclude name="**/org-apache-oro-*.jar"/>
+			</fileset>
+		</copy>
+
+		<!-- copy the logos -->
+		<copy todir="${dist}/classic">
+			<fileset dir="${build}/images">
+				<include name="**/*.*"/>
+			</fileset>
+		</copy>
+
+		<!-- copy installer files -->
+		<copy todir="${dist}/extension/">
+			<fileset dir="${build}">
+				<include name="**/*.cfc"/>
+				<include name="**/*.xml"/>
+				<include name="**/${camelname}.cfc"/>
+			</fileset>
+		</copy>
+
+		<loadfile property="content1" srcFile="${build}/context/admin/cdriver/${camelname}.cfc" />
+		<replace haystack="${content1}" needle="{class}" repl="${class}" property="content2"/>
+		<replace haystack="${content2}" needle="{label}" repl="${label}" property="content3"/>
+		<replace haystack="${content3}" needle="{desc}" repl="${description}" property="content4"/>
+		<echo message="${content4}" file="${dist}/extension/context/admin/cdriver/${camelname}.cfc"/>
+
+		<!-- Zip everything  -->
+		<zip destfile="${dist}/classic/extension.zip">
+				<zipfileset dir="${dist}/extension"/>
+		</zip>
+	</target>
+
+	<target name="buildClassic"  depends="dist" description="clean up" >
+		<delete dir="${dist}/extension"/>
+	</target>
+</project>
