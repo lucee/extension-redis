@@ -9,7 +9,7 @@
 		<!-- doc.json -->
 		<echo file="${dist}/classic/doc.json">{
 "builtDate":"${NOW}",
-"version":"${bundleversion}${build.number}",
+"version":"${bundleversion}${build.number}${bundleversion_appendix}", 
 "id":"${id}",
 "name":"${codename}",
 "codename":"${codename}",
