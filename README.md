@@ -1,14 +1,14 @@
-##Lucee Redis Cache Extension
+## Lucee Redis Cache Extension
 
 The redis driver is based on Jedis. While this is a very robust driver and Redis is amaxing this project has to be considered in Beta stage.
 Feel free to fork it and provide your feedbacks.
 
-###Installation
+### Installation
 
 Install the extension from the Lucee extension store in Lucee admin. Please note that the extension is installable only in the *server* admin.
 This means that is not possible to install it for a single web context.
 
-###Create and configure the cache
+### Create and configure the cache
 
 Create a new cache selecting Redis Cache as Type.
 
@@ -21,7 +21,7 @@ Please tune this following your environments needs. Note that the driver actuall
 
 Well. You are done.
 
-###Important
+### Important
 
 * *Metadata*:
     * The cache will return only the hits count for any single key.
