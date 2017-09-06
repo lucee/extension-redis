@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project default="clean" basedir="." name="formtag-extension">
 	<description>Build Redis Extension Modern</description>
 
@@ -31,7 +31,6 @@ id: "${id}"
 name: "${label}"
 description: "${description}"
 start-bundles: false
-lucee-core-version: "${luceeCoreVersion}”
 release-type: ${releaseType}
 cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
 </echo>
