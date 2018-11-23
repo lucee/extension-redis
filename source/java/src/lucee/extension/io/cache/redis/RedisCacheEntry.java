@@ -1,73 +1,77 @@
 package lucee.extension.io.cache.redis;
 
+import java.util.Date;
+
 import lucee.commons.io.cache.CacheEntry;
-import lucee.extension.util.Functions;
 import lucee.loader.engine.CFMLEngineFactory;
-import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Struct;
 
-import java.util.Date;
-import java.util.HashMap;
+public class RedisCacheEntry implements CacheEntry {
 
-public class RedisCacheEntry implements CacheEntry{
+    private AbstractRedisCache cache;
+    private String key;
+    private Object value;
+    private long size;
 
-	RedisCacheItem item;
-	Functions func = new Functions();
+    public RedisCacheEntry(AbstractRedisCache cache, String key, Object value, long size) {
+	this.cache = cache;
+	this.key = key;
+	this.value = value;
+	this.size = size;
+    }
 
-	public RedisCacheEntry(RedisCacheItem redisCacheItem) {
-		item = redisCacheItem;
-	}
+    @Override
+    public Date lastHit() {
+	return null; // TODO To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public Date lastHit() {
-		return null;  //To change body of implemented methods use File | Settings | File Templates.
-	}
+    @Override
+    public Date lastModified() {
+	return null; // TODO To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public Date lastModified() {
-		return null;  //To change body of implemented methods use File | Settings | File Templates.
-	}
+    @Override
+    public Date created() {
+	return null; // To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public Date created() {
-		return null;  //To change body of implemented methods use File | Settings | File Templates.
-	}
+    @Override
+    public int hitCount() {
+	return 0;
+    }
 
-	public int hitCount() {
-		return item.getHitCount();
-	}
+    @Override
+    public String getKey() {
+	return key;
+    }
 
-	public String getKey() {
-		return RedisCacheUtils.removeNamespace(item.getCacheName(), item.getKey());
-	}
+    @Override
+    public Object getValue() {
+	return value;
+    }
 
-	public Object getValue() {
-		try {
-			String val = item.getValue();
-			return func.evaluate(item.getValue());
-		} catch (PageException e) {
-			e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-			return null;
-		}
-	}
+    @Override
+    public long size() {
+	return size; // To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public long size() {
-		return 0;  //To change body of implemented methods use File | Settings | File Templates.
-	}
+    @Override
+    public long liveTimeSpan() {
+	return 0; // To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public long liveTimeSpan() {
-		return 0;  //To change body of implemented methods use File | Settings | File Templates.
-	}
+    @Override
+    public long idleTimeSpan() {
+	return 0; // To change body of implemented methods use File | Settings | File Templates.
+    }
 
-	public long idleTimeSpan() {
-		return 0;  //To change body of implemented methods use File | Settings | File Templates.
-	}
-
-	public Struct getCustomInfo() {
-		Struct metadata = CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
-		try{
-			metadata.set("hits", hitCount());
-		}catch (PageException e){
-			e.printStackTrace();
-		}
-		return metadata;
-	}
+    @Override
+    public Struct getCustomInfo() {
+	Struct metadata = CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
+	/*
+	 * try { metadata.set("hits", hitCount()); } catch (PageException e) { e.printStackTrace(); }
+	 */
+	return metadata;
+    }
 
 }

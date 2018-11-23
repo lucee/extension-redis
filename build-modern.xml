@@ -32,7 +32,7 @@ name: "${label}"
 description: "${description}"
 start-bundles: false
 release-type: ${releaseType}
-cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
+cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'},{'class':'${class_sen}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
 </echo>
 
 
@@ -56,14 +56,21 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 			tofile="${dist}/extension2/jars/lucee.extension.${codename}-${bundleversion}${build.number}${bundleversion_appendix}.jar"/>
 
 
-		<!-- copy the context necessary -->
+		<!-- Redis.cfc -->
 		<loadfile property="content1" srcFile="${build}/context/admin/cdriver/${camelname}.cfc" />
 		<replace haystack="${content1}" needle="{class}" repl="${class}" property="content2"/>
-		<replace haystack="${content2}" needle="{label}" repl="${label}" property="content3"/>
-		<replace haystack="${content3}" needle="{desc}" repl="${description}" property="content4"/>
+		<replace haystack="${content2}" needle="{label}" repl="${lab}" property="content3"/>
+		<replace haystack="${content3}" needle="{desc}" repl="${desc}" property="content4"/>
 		<echo message="${content4}" file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc"/>
 
-		<!-- copy the logo -->
+		<!-- RedisSentinel.cfc -->
+		<loadfile property="ccontent1" srcFile="${build}/context/admin/cdriver/${camelname_sen}.cfc" />
+		<replace haystack="${ccontent1}" needle="{class}" repl="${class_sen}" property="ccontent2"/>
+		<replace haystack="${ccontent2}" needle="{label}" repl="${lab_sen}" property="ccontent3"/>
+		<replace haystack="${ccontent3}" needle="{desc}" repl="${desc_sen}" property="ccontent4"/>
+		<echo message="${ccontent4}" file="${dist}/extension2/context/admin/cdriver/${camelname_sen}.cfc"/>
+
+		<!-- copy the logos -->
 		<copy todir="${dist}/extension2/META-INF">
 			<fileset dir="${build}/images">
 				<include name="logo.png"/>

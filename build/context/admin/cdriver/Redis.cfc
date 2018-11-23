@@ -1,25 +1,18 @@
 component extends="Cache" {
 	variables.fields = [
-		field(displayName = "Master name",
-			name = "masterName",
-			defaultValue = "",
+		field(displayName = "Host",
+			name = "host",
+			defaultValue = "localhost",
 			required = true,
-			description = "Sentinel master name",
+			description = "Host name or ip address of the server you want to connect.",
 			type = "text"
 			)
-		,field(displayName = "Sentinels",
-			name = "sentinels",
-			defaultValue = "localhost:26379",
+		,field(displayName = "Port",
+			name = "port",
+			defaultValue = 6379,
 			required = true,
-			description = "Sentinels",
-			type = "textarea"
-		)
-		,field(
-			displayName = "Namespace",
-			name = "namespace",
-			defaultValue = "lucee:cache",
-			required = true,
-			description = "Keys namespace. Be sure that any cache use a unique namespace to avoid keys names clashing."
+			description = "Port Redis is listening on.",
+			type = "text"
 		)
 
 		,group("Authentication","Authentication Credentials if necessary.")
@@ -34,6 +27,7 @@ component extends="Cache" {
 		,group("Time Management","")
 		,field("Time to live in seconds","timeToLiveSeconds","0",true,"Sets the timeout to live for an element before it expires. If all fields are set to 0 the element live as long the server live.","time")
 		
+
 		,group("Pool","Connection to Redis are handled within a Pool, the following settings allows you to configure this pool.")
 		,field(displayName = "Max Total",
 			name = "maxTotal",
@@ -64,6 +58,7 @@ component extends="Cache" {
 			type = "text"
 		)
 	];
+
 	public string function getClass() {
 		return "{class}";
 	}

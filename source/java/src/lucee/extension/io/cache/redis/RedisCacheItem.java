@@ -1,55 +1,46 @@
 package lucee.extension.io.cache.redis;
 
-public class RedisCacheItem{
+public class RedisCacheItem {
 
-	Integer hitCount;
-	String key;
-	String value;
+    Integer hitCount;
+    String key;
+    String value;
 
-	private String cacheName;
+    // private String cacheName;
 
-	public RedisCacheItem(String key, String value, String cacheName) {
-		setKey(key);
-		setValue(value);
-		setHitCount(0);
+    public RedisCacheItem(String key, String value) {
+	setKey(key);
+	setValue(value);
+	setHitCount(0);
+    }
 
-		this.cacheName = cacheName;
-	}
+    public RedisCacheItem(String key, String value, Integer hitCount) {
+	setKey(key);
+	setValue(value);
+	setHitCount(hitCount);
+    }
 
-	public RedisCacheItem(String key, String value, Integer hitCount, String cacheName) {
-		setKey(key);
-		setValue(value);
-		setHitCount(hitCount);
+    public Integer getHitCount() {
+	return hitCount;
+    }
 
-		this.cacheName = cacheName;
-	}
+    public void setHitCount(Integer hitCount) {
+	this.hitCount = hitCount;
+    }
 
+    public void setKey(String key) {
+	this.key = key;
+    }
 
-	public Integer getHitCount() {
-		return hitCount;
-	}
+    public void setValue(String value) {
+	this.value = value;
+    }
 
-	public void setHitCount(Integer hitCount) {
-		this.hitCount = hitCount;
-	}
+    public String getKey() {
+	return key;
+    }
 
-	public void setKey(String key) {
-		this.key = key;
-	}
-
-	public void setValue(String value) {
-		this.value = value;
-	}
-
-	public String getKey() {
-		return key;
-	}
-
-	public String getValue() {
-		return value;
-	}
-
-	public String getCacheName() {
-		return cacheName;
-	}
+    public String getValue() {
+	return value;
+    }
 }
