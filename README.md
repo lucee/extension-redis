@@ -1,7 +1,7 @@
 ## Lucee Redis Cache Extension
 
-The redis driver is based on Jedis. While this is a very robust driver and Redis is amaxing this project has to be considered in Beta stage.
-Feel free to fork it and provide your feedbacks.
+The redis driver is based on Jedis. While this is a very robust driver and Redis is amazing this project has to be considered in Beta stage.
+Please provide your feedback.
 
 ### Installation
 
@@ -15,11 +15,11 @@ Create a new cache selecting Redis Cache as Type.
 Add some configuration:
 
 * If you like you can use the driver to store the Session Scope. If this is your intention you can flag "Allow to use this cache as client/session storage."
-* Server/Host => says to the Lucee how to connect to Redis. By default this is setted to localhost:6379.
-Please tune this following your environments needs. Note that the driver actually support a single Redis Server.
-* Namesapce => choose the namespace that will be used to avoid keys name clashing between differents cache instances.
+* Server/Host => Tells Lucee how to connect to Redis. By default this is set to localhost:6379.
+Please tune this following your environment's needs. Note that the driver actually support a single Redis Server.
+* Namespace => choose the namespace that will be used to avoid keys name clashing between differents cache instances.
 
-Well. You are done.
+All set. You are done.
 
 ### Important
 
