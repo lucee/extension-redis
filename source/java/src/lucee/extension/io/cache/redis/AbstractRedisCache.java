@@ -229,6 +229,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	Jedis conn = jedis();
 	Set<String> set = conn.keys("*");
 	String[] keys = engine.getListUtil().toStringArray(set);
+	if (keys.length == 0) return 0;
 	return engine.getCastUtil().toIntValue(conn.del(keys), 0);
     }
 
