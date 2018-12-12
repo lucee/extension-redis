@@ -143,7 +143,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     public boolean contains(String key) {
 	Jedis conn = jedisSilent();
 	try {
-	    return conn.exists(key);
+	    return conn.exists(validateKey(key));
 	}
 	finally {
 	    RedisCacheUtils.close(conn);
@@ -154,7 +154,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     public boolean remove(String key) throws IOException {
 	Jedis conn = jedis();
 	try {
-	    return conn.del(key) > 0;
+	    return conn.del(validateKey(key)) > 0;
 	}
 	finally {
 	    RedisCacheUtils.close(conn);

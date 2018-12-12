@@ -17,7 +17,6 @@ public class RedisCache extends AbstractRedisCache {
     @Override
     public void init(Config config, String cacheName, Struct arguments) throws IOException {
 	super.init(arguments);
-	new Throwable().printStackTrace();
 	host = caster.toString(arguments.get("host", "localhost"), "localhost");
 	port = caster.toIntValue(arguments.get("port", null), 6379);
     }
