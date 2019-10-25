@@ -14,6 +14,13 @@ component extends="Cache" {
 			description = "Port Redis is listening on.",
 			type = "text"
 		)
+		,field(
+			displayName = "Namespace",
+			name = "namespace",
+			defaultValue = "lucee:cache",
+			required = false,
+			description = "Keys namespace. If using the same Redis instance for more than one cache use a unique namespace to avoid keys names clashing."
+		)
 
 		,group("Authentication","Authentication Credentials if necessary.")
 		,field(displayName = "Password",

@@ -18,8 +18,8 @@ component extends="Cache" {
 			displayName = "Namespace",
 			name = "namespace",
 			defaultValue = "lucee:cache",
-			required = true,
-			description = "Keys namespace. Be sure that any cache use a unique namespace to avoid keys names clashing."
+			required = false,
+			description = "Keys namespace. If using the same Redis instance for more than one cache use a unique namespace to avoid keys names clashing."
 		)
 
 		,group("Authentication","Authentication Credentials if necessary.")

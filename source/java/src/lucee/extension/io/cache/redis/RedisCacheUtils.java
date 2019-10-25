@@ -11,19 +11,19 @@ public class RedisCacheUtils {
     private RedisCacheUtils() {}
 
     public static String removeNamespace(String nameSpace, String key) {
-	if (nameSpace != null && key.startsWith(nameSpace)) return key.replace(nameSpace + ":", "");
+	if (nameSpace != null && key.startsWith(nameSpace.toLowerCase())) return key.replace(nameSpace.toLowerCase() + ":", "");
 	return key;
 
     }
 
-    public static String addNamespace(String nameSpace, String key) throws IOException { // TODO rethink this
-	if (nameSpace == null) return key.toLowerCase();
+    public static String addNamespace(String nameSpace, String key) {
+	if (nameSpace == null) return key; // key is already lowercased due to validateKey call
 
-	if (key.startsWith(nameSpace + ":")) {
+	if (key.startsWith(nameSpace.toLowerCase() + ":")) {
 	    return key;
 	}
-	String res = nameSpace + ':' + key;
-	return res.toLowerCase();// setting case sensitive
+	String res = nameSpace.toLowerCase() + ':' + key; // setting case sensitive
+	return res;
     }
 
     public static void close(Jedis jedis) {

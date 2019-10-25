@@ -36,6 +36,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     private int maxIdle;
     private int minIdle;
     private int defaultExpire;
+    private String namespace;
 
     public void init(Config config, String[] cacheName, Struct[] arguments) {
 	// Not used at the moment
@@ -48,6 +49,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	if (Util.isEmpty(password)) password = null;
 
 	defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
+
+    namespace = caster.toString(arguments.get("namespace", null), null);
+    if (Util.isEmpty(namespace)) namespace = null;
 
 	// for config
 	maxTotal = caster.toIntValue(arguments.get("maxTotal", null), 0);
@@ -76,11 +80,11 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	    key = validateKey(key);
 	    String val = null;
 	    try {
-		val = conn.get(key);
+		val = conn.get(RedisCacheUtils.addNamespace(namespace, key));
 	    }
 	    catch (JedisDataException jde) {
 		String msg = jde.getMessage() + "";
-		if (msg.startsWith("WRONGTYPE")) val = conn.lpop(key);
+		if (msg.startsWith("WRONGTYPE")) val = conn.lpop(RedisCacheUtils.addNamespace(namespace, key));
 	    }
 	    if (val == null) throw new IOException("Cache key [" + key + "] does not exists");
 	    return new RedisCacheEntry(this, key, evaluate(val), val.length());
@@ -112,23 +116,31 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	    // fields.put("value", value);
 	    // fields.put("hitCount", "0");
 	    // conn.hmset(key, fields);
-	    conn.set(validateKey(key), serialize(val));
+
 	    // TODO different to default?
 	    // System.err.println("idle:" + idle);
 	    // System.err.println("expire:" + expire);
 	    // System.err.println("defaultExpire:" + defaultExpire);
 
-	    int ex = 0;
-	    if (expire != null) {
-		ex = (int) (expire / 1000);
-	    }
-	    else {
-		ex = defaultExpire;
-	    }
+	    int ex = defaultExpire;
 
+	    if (expire != null) {
+	        ex = (int) (expire / 1000);
+	    }
+	    else if (idle != null) {
+	        // note: if this cache is being used as a session store
+	        // then idle will be passed in as -1 when a new session
+	        // is created and first stored. Avoid setting `ex` in
+	        // this case so we don't get a cache item without a TTL
+	        // when the cache has a default TTL
+	        if (idle >= 0) {
+	            ex = (int) (idle / 1000);
+	        }
+	    }
 	    if (ex > 0) {
-		// System.err.println(key + ":" + ex);
-		conn.expire(validateKey(key), ex);
+	        conn.setex(RedisCacheUtils.addNamespace(namespace, validateKey(key)), ex, serialize(val));
+	    } else {
+	        conn.set(RedisCacheUtils.addNamespace(namespace, validateKey(key)), serialize(val));
 	    }
 	}
 	catch (PageException e) {
@@ -143,7 +155,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     public boolean contains(String key) {
 	Jedis conn = jedisSilent();
 	try {
-	    return conn.exists(validateKey(key));
+	    return conn.exists(RedisCacheUtils.addNamespace(namespace, validateKey(key)));
 	}
 	finally {
 	    RedisCacheUtils.close(conn);
@@ -154,7 +166,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     public boolean remove(String key) throws IOException {
 	Jedis conn = jedis();
 	try {
-	    return conn.del(validateKey(key)) > 0;
+	    return conn.del(RedisCacheUtils.addNamespace(namespace, validateKey(key))) > 0;
 	}
 	finally {
 	    RedisCacheUtils.close(conn);
@@ -165,7 +177,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     public List<String> keys() throws IOException {
 	Jedis conn = jedis();
 	try {
-	    return toList(conn.keys("*"));
+	    return toList(conn.keys(RedisCacheUtils.addNamespace(namespace, "*")));
 	}
 	finally {
 	    RedisCacheUtils.close(conn);
@@ -208,7 +220,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	List<String> list = new ArrayList<String>();
 	Iterator<String> it = keys.iterator();
 	while (it.hasNext()) {
-	    list.add(it.next());
+	    list.add(RedisCacheUtils.removeNamespace(namespace, it.next()));
 	}
 	return list;
     }
@@ -227,7 +239,7 @@ public abstract class AbstractRedisCache extends CacheSupport {
     @Override
     public int clear() throws IOException {
 	Jedis conn = jedis();
-	Set<String> set = conn.keys("*");
+	Set<String> set = conn.keys(RedisCacheUtils.addNamespace(namespace, "*"));
 	String[] keys = engine.getListUtil().toStringArray(set);
 	if (keys.length == 0) return 0;
 	return engine.getCastUtil().toIntValue(conn.del(keys), 0);
