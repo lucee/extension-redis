@@ -78,7 +78,7 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 		</copy>
 
 		<!-- Zip everything  -->
-		<zip destfile="${dist}/modern/extension-${codename}-${bundleversion}${build.number}${bundleversion_appendix}.lex">
+		<zip destfile="${dist}/modern/${bundlename}-${bundleversion}${build.number}${bundleversion_appendix}.lex">
 				<zipfileset dir="${dist}/extension2"/>
 		</zip>
 

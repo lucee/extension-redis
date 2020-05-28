@@ -45,6 +45,7 @@ public class WildCardFilter implements CacheKeyFilter {
 	/**
 	 * @see lucee.commons.io.cache.CacheKeyFilter#accept(java.lang.String)
 	 */
+	@Override
 	public boolean accept(String key) {
 		return matcher.matches(ignoreCase?key.toLowerCase():key, pattern);
 	}
@@ -53,6 +54,7 @@ public class WildCardFilter implements CacheKeyFilter {
 	 *
 	 * @see java.lang.Object#toString()
 	 */
+	@Override
 	public String toString() {
 		return "Wildcardfilter:"+wildcard;
 	}
@@ -60,6 +62,7 @@ public class WildCardFilter implements CacheKeyFilter {
 	/**
 	 * @see lucee.commons.io.cache.CacheFilter#toPattern()
 	 */
+	@Override
 	public String toPattern() {
 		return wildcard;
 	}

@@ -1,6 +1,7 @@
 package lucee.extension.io.cache.redis;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
@@ -17,201 +18,136 @@ import lucee.commons.io.cache.exp.CacheException;
  */
 public abstract class CacheSupport implements Cache {
 
-    @Override
-    public List<String> keys(CacheKeyFilter filter) throws IOException {
-	boolean all = CacheUtil.allowAll(filter);
+	public static final Charset UTF8 = Charset.forName("UTF-8");
 
-	List<String> keys = keys();
-	List<String> list = new ArrayList<String>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	while (it.hasNext()) {
-	    key = it.next();
-	    if (all || filter.accept(key)) list.add(key);
+	@Override
+	public List<String> keys(CacheEntryFilter filter) throws IOException {
+		boolean all = CacheUtil.allowAll(filter);
+
+		List<String> keys = keys();
+		List<String> list = new ArrayList<String>();
+		Iterator<String> it = keys.iterator();
+		String key;
+		CacheEntry entry;
+		while (it.hasNext()) {
+			key = it.next();
+			entry = getQuiet(key, null);
+			if (all || filter.accept(entry)) list.add(key);
+		}
+		return list;
 	}
-	return list;
-    }
 
-    @Override
-    public List<String> keys(CacheEntryFilter filter) throws IOException {
-	boolean all = CacheUtil.allowAll(filter);
-
-	List<String> keys = keys();
-	List<String> list = new ArrayList<String>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	CacheEntry entry;
-	while (it.hasNext()) {
-	    key = it.next();
-	    entry = getQuiet(key, null);
-	    if (all || filter.accept(entry)) list.add(key);
+	@Override
+	public List<CacheEntry> entries(CacheEntryFilter filter) throws IOException {
+		List<CacheEntry> entries = entries();
+		List<CacheEntry> list = new ArrayList<CacheEntry>();
+		Iterator<CacheEntry> it = entries.iterator();
+		CacheEntry entry;
+		while (it.hasNext()) {
+			entry = it.next();
+			if (entry != null && filter.accept(entry)) {
+				list.add(entry);
+			}
+		}
+		return list;
 	}
-	return list;
-    }
 
-    @Override
-    public List<CacheEntry> entries() throws IOException {
-	List<String> keys = keys();
-	List<CacheEntry> list = new ArrayList<CacheEntry>();
-	Iterator<String> it = keys.iterator();
-	while (it.hasNext()) {
-	    list.add(getQuiet(it.next(), null));
+	// there was the wrong generic type defined in the older interface, because of that we do not define
+	// a generic type at all here, just to be sure
+	@Override
+	public List values(CacheEntryFilter filter) throws IOException {
+		if (CacheUtil.allowAll(filter)) return values();
+
+		List<String> keys = keys();
+		List<Object> list = new ArrayList<Object>();
+		Iterator<String> it = keys.iterator();
+		String key;
+		CacheEntry entry;
+		while (it.hasNext()) {
+			key = it.next();
+			entry = getQuiet(key, null);
+			if (filter.accept(entry)) list.add(entry.getValue());
+		}
+		return list;
 	}
-	return list;
-    }
 
-    @Override
-    public List<CacheEntry> entries(CacheKeyFilter filter) throws IOException {
-	List<String> keys = keys();
-	List<CacheEntry> list = new ArrayList<CacheEntry>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	while (it.hasNext()) {
-	    key = it.next();
-	    if (filter.accept(key)) list.add(getQuiet(key, null));
+	// there was the wrong generic type defined in the older interface, because of that we do not define
+	// a generic type at all here, just to be sure
+
+	@Override
+	public int remove(CacheEntryFilter filter) throws IOException {
+		if (CacheUtil.allowAll(filter)) return clear();
+
+		List<String> keys = keys();
+		int count = 0;
+		Iterator<String> it = keys.iterator();
+		String key;
+		CacheEntry entry;
+		while (it.hasNext()) {
+			key = it.next();
+			entry = getQuiet(key, null);
+			if (filter == null || filter.accept(entry)) {
+				remove(key);
+				count++;
+			}
+		}
+		return count;
 	}
-	return list;
-    }
 
-    @Override
-    public List<CacheEntry> entries(CacheEntryFilter filter) throws IOException {
-	List<String> keys = keys();
-	List<CacheEntry> list = new ArrayList<CacheEntry>();
-	Iterator<String> it = keys.iterator();
-	CacheEntry entry;
-	while (it.hasNext()) {
-	    entry = getQuiet(it.next(), null);
-	    if (filter.accept(entry)) list.add(entry);
+	@Override
+	public int remove(CacheKeyFilter filter) throws IOException {
+		if (CacheUtil.allowAll(filter)) return clear();
+
+		List<String> keys = keys();
+		int count = 0;
+		Iterator<String> it = keys.iterator();
+		String key;
+		while (it.hasNext()) {
+			key = it.next();
+			if (filter == null || filter.accept(key)) {
+				remove(key);
+				count++;
+			}
+		}
+		return count;
 	}
-	return list;
-    }
 
-    // there was the wrong generic type defined in the older interface, because of that we do not define
-    // a generic type at all here, just to be sure
-    @Override
-    public List values() throws IOException {
-	List<String> keys = keys();
-	List<Object> list = new ArrayList<Object>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	while (it.hasNext()) {
-	    key = it.next();
-	    list.add(getQuiet(key, null).getValue());
+	@Override
+	public Object getValue(String key) throws IOException {
+		return getCacheEntry(key).getValue();
 	}
-	return list;
-    }
 
-    // there was the wrong generic type defined in the older interface, because of that we do not define
-    // a generic type at all here, just to be sure
-    @Override
-    public List values(CacheEntryFilter filter) throws IOException {
-	if (CacheUtil.allowAll(filter)) return values();
-
-	List<String> keys = keys();
-	List<Object> list = new ArrayList<Object>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	CacheEntry entry;
-	while (it.hasNext()) {
-	    key = it.next();
-	    entry = getQuiet(key, null);
-	    if (filter.accept(entry)) list.add(entry.getValue());
+	@Override
+	public Object getValue(String key, Object defaultValue) {
+		CacheEntry entry = getCacheEntry(key, null);
+		if (entry == null) return defaultValue;
+		return entry.getValue();
 	}
-	return list;
-    }
 
-    // there was the wrong generic type defined in the older interface, because of that we do not define
-    // a generic type at all here, just to be sure
-    @Override
-    public List values(CacheKeyFilter filter) throws IOException {
-	if (CacheUtil.allowAll(filter)) return values();
-
-	List<String> keys = keys();
-	List<Object> list = new ArrayList<Object>();
-	Iterator<String> it = keys.iterator();
-	String key;
-	while (it.hasNext()) {
-	    key = it.next();
-	    if (filter.accept(key)) list.add(getQuiet(key, null).getValue());
+	protected static boolean valid(CacheEntry entry) {
+		if (entry == null) return false;
+		long now = System.currentTimeMillis();
+		if (entry.liveTimeSpan() > 0 && entry.liveTimeSpan() + getTime(entry.lastModified()) < now) {
+			return false;
+		}
+		if (entry.idleTimeSpan() > 0 && entry.idleTimeSpan() + getTime(entry.lastHit()) < now) {
+			return false;
+		}
+		return true;
 	}
-	return list;
-    }
 
-    @Override
-    public int remove(CacheEntryFilter filter) throws IOException {
-	if (CacheUtil.allowAll(filter)) return clear();
-
-	List<String> keys = keys();
-	int count = 0;
-	Iterator<String> it = keys.iterator();
-	String key;
-	CacheEntry entry;
-	while (it.hasNext()) {
-	    key = it.next();
-	    entry = getQuiet(key, null);
-	    if (filter == null || filter.accept(entry)) {
-		remove(key);
-		count++;
-	    }
+	private static long getTime(Date date) {
+		return date == null ? 0 : date.getTime();
 	}
-	return count;
-    }
 
-    @Override
-    public int remove(CacheKeyFilter filter) throws IOException {
-	if (CacheUtil.allowAll(filter)) return clear();
-
-	List<String> keys = keys();
-	int count = 0;
-	Iterator<String> it = keys.iterator();
-	String key;
-	while (it.hasNext()) {
-	    key = it.next();
-	    if (filter == null || filter.accept(key)) {
-		remove(key);
-		count++;
-	    }
+	public CacheEntry getQuiet(String key) throws IOException {
+		CacheEntry entry = getQuiet(key, null);
+		if (entry == null) throw new CacheException("there is no valid cache entry with key [" + key + "]");
+		return entry;
 	}
-	return count;
-    }
 
-    @Override
-    public Object getValue(String key) throws IOException {
-	return getCacheEntry(key).getValue();
-    }
+	public abstract CacheEntry getQuiet(String key, CacheEntry defaultValue);
 
-    @Override
-    public Object getValue(String key, Object defaultValue) {
-	CacheEntry entry = getCacheEntry(key, null);
-	if (entry == null) return defaultValue;
-	return entry.getValue();
-    }
-
-    protected static boolean valid(CacheEntry entry) {
-	if (entry == null) return false;
-	long now = System.currentTimeMillis();
-	if (entry.liveTimeSpan() > 0 && entry.liveTimeSpan() + getTime(entry.lastModified()) < now) {
-	    return false;
-	}
-	if (entry.idleTimeSpan() > 0 && entry.idleTimeSpan() + getTime(entry.lastHit()) < now) {
-	    return false;
-	}
-	return true;
-    }
-
-    private static long getTime(Date date) {
-	return date == null ? 0 : date.getTime();
-    }
-
-    public CacheEntry getQuiet(String key) throws IOException {
-	CacheEntry entry = getQuiet(key, null);
-	if (entry == null) throw new CacheException("there is no valid cache entry with key [" + key + "]");
-	return entry;
-    }
-
-    public abstract CacheEntry getQuiet(String key, CacheEntry defaultValue);
-
-    // CachePro interface @Override
-    public abstract int clear() throws IOException;
-
+	// CachePro interface @Override
+	public abstract int clear() throws IOException;
 }
