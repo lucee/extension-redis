@@ -10,7 +10,6 @@ import java.util.List;
 import lucee.commons.io.cache.Cache;
 import lucee.commons.io.cache.CacheEntry;
 import lucee.commons.io.cache.CacheEntryFilter;
-import lucee.commons.io.cache.CacheKeyFilter;
 import lucee.commons.io.cache.exp.CacheException;
 
 /**
@@ -87,24 +86,6 @@ public abstract class CacheSupport implements Cache {
 			key = it.next();
 			entry = getQuiet(key, null);
 			if (filter == null || filter.accept(entry)) {
-				remove(key);
-				count++;
-			}
-		}
-		return count;
-	}
-
-	@Override
-	public int remove(CacheKeyFilter filter) throws IOException {
-		if (CacheUtil.allowAll(filter)) return clear();
-
-		List<String> keys = keys();
-		int count = 0;
-		Iterator<String> it = keys.iterator();
-		String key;
-		while (it.hasNext()) {
-			key = it.next();
-			if (filter == null || filter.accept(key)) {
 				remove(key);
 				count++;
 			}

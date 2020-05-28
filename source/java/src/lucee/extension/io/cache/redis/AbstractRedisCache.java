@@ -160,6 +160,32 @@ public abstract class AbstractRedisCache extends CacheSupport {
 		}
 	}
 
+	public boolean remove(String[] keys) throws IOException {
+		Jedis conn = jedis();
+		try {
+			return conn.del(toKeys(keys)) > 0;
+		}
+		finally {
+			RedisCacheUtils.close(conn);
+		}
+	}
+
+	@Override
+	public int remove(CacheKeyFilter filter) throws IOException {
+		Jedis conn = jedisSilent();
+
+		try {
+			List<byte[]> lkeys = _bkeys(conn, filter);
+			if (lkeys == null || lkeys.size() == 0) return 0;
+			Long rtn = conn.del(lkeys.toArray(new byte[lkeys.size()][]));
+			if (rtn == null) return 0;
+			return rtn.intValue();
+		}
+		finally {
+			RedisCacheUtils.close(conn);
+		}
+	}
+
 	@Override
 	public List<String> keys() throws IOException {
 		Jedis conn = jedis();
@@ -354,6 +380,14 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	private byte[] toKey(String key) {
 		return key.trim().toLowerCase().getBytes(UTF8);
+	}
+
+	private byte[][] toKeys(String[] keys) {
+		byte[][] arr = new byte[keys.length][];
+		for (int i = 0; i < keys.length; i++) {
+			arr[i] = keys[i].trim().toLowerCase().getBytes(UTF8);
+		}
+		return arr;
 	}
 
 	private Object evaluate(byte[] data) throws PageException {
