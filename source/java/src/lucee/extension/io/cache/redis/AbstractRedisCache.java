@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.StreamCorruptedException;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -173,7 +175,6 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	@Override
 	public int remove(CacheKeyFilter filter) throws IOException {
 		Jedis conn = jedisSilent();
-
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
 			if (lkeys == null || lkeys.size() == 0) return 0;
@@ -246,7 +247,6 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	@Override
 	public List<CacheEntry> entries(CacheKeyFilter filter) throws IOException {
 		Jedis conn = jedisSilent();
-
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
 			List<CacheEntry> list = new ArrayList<CacheEntry>();
@@ -296,7 +296,6 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	@Override
 	public List values(CacheKeyFilter filter) throws IOException {
 		Jedis conn = jedisSilent();
-
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
 			List<Object> list = new ArrayList<Object>();
@@ -329,7 +328,14 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	@Override
 	public Struct getCustomInfo() {
-		return InfoParser.parse(CacheUtil.getInfo(this), jedisSilent().info());// not throwing IOException because Lucee 4.5
+		Jedis conn = jedisSilent();
+		try {
+			return InfoParser.parse(CacheUtil.getInfo(this), conn.info());// not throwing IOException because Lucee 4.5
+		}
+
+		finally {
+			RedisCacheUtils.close(conn);
+		}
 	}
 
 	/*
@@ -372,10 +378,15 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	@Override
 	public int clear() throws IOException {
 		Jedis conn = jedis();
-		Set<String> set = conn.keys("*");
-		String[] keys = engine.getListUtil().toStringArray(set);
-		if (keys.length == 0) return 0;
-		return engine.getCastUtil().toIntValue(conn.del(keys), 0);
+		try {
+			Set<String> set = conn.keys("*");
+			String[] keys = engine.getListUtil().toStringArray(set);
+			if (keys.length == 0) return 0;
+			return engine.getCastUtil().toIntValue(conn.del(keys), 0);
+		}
+		finally {
+			RedisCacheUtils.close(conn);
+		}
 	}
 
 	private byte[] toKey(String key) {
@@ -397,8 +408,21 @@ public abstract class AbstractRedisCache extends CacheSupport {
 			ois = new ObjectInputStreamImpl(cl, bais);
 			return ois.readObject();
 		}
+		catch (StreamCorruptedException sce) {
+			try {
+				return evaluateLegacy(new String(data, "UTF-8"));
+			}
+			catch (UnsupportedEncodingException uee) {
+				return evaluateLegacy(new String(data));
+			}
+		}
 		catch (Exception e) {
-			throw CFMLEngineFactory.getInstance().getCastUtil().toPageException(e);
+			try {
+				return evaluateLegacy(new String(data, "UDF-8"));
+			}
+			catch (UnsupportedEncodingException uee) {
+				throw CFMLEngineFactory.getInstance().getCastUtil().toPageException(e);
+			}
 		}
 		finally {
 			Util.closeEL(ois);
@@ -416,6 +440,31 @@ public abstract class AbstractRedisCache extends CacheSupport {
 		catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getCastUtil().toPageException(e);
 		}
+	}
+
+	private Object evaluateLegacy(String val) throws PageException {
+		// number
+		if (val.startsWith("nbr(") && val.endsWith(")")) {
+			// System.err.println("nbr:" + val + ":" + func.getClass().getName());
+			return engine.getCastUtil().toDouble(val.substring(4, val.length() - 1));
+		}
+		// boolean
+		else if (val.startsWith("bool(") && val.endsWith(")")) {
+			// System.err.println("bool:" + val + ":" + func.getClass().getName());
+			return engine.getCastUtil().toBoolean(val.substring(5, val.length() - 1));
+		}
+		// date
+		else if (val.startsWith("date(") && val.endsWith(")")) {
+			// System.err.println("date:" + val + ":" + func.getClass().getName());
+			return engine.getCreationUtil().createDate(engine.getCastUtil().toLongValue(val.substring(5, val.length() - 1)));
+		}
+		// eval
+		else if (val.startsWith("eval(") && val.endsWith(")")) {
+			// System.err.println("eval:" + val + ":" + func.getClass().getName());
+			return func.evaluate(val.substring(5, val.length() - 1));
+		}
+		// System.err.println("raw:" + val + ":" + func.getClass().getName());
+		return val; // MUST
 	}
 
 	protected abstract Jedis _jedis() throws IOException;
