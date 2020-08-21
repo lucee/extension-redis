@@ -12,23 +12,28 @@ import redis.clients.jedis.JedisSentinelPool;
 
 public class RedisSentinelCache extends AbstractRedisCache {
 
-    private String masterName;
-    private Set<String> sentinels;
+	private String masterName;
+	private Set<String> sentinels;
 
-    private JedisSentinelPool pool;
+	private JedisSentinelPool pool;
 
-    @Override
-    public void init(Config config, String cacheName, Struct arguments) throws IOException {
-	super.init(arguments);
-	masterName = caster.toString(arguments.get("masterName", ""), "");
-	sentinels = RedisCacheUtils.toSet(caster.toString(arguments.get("sentinels", ""), "").split("\\r?\\n")); // TODO better
-    }
-
-    @Override
-    protected Jedis _jedis() throws IOException {
-	if (pool == null) {
-	    pool = new JedisSentinelPool(masterName, sentinels, getJedisPoolConfig(), timeout, password);
+	@Override
+	public void init(Config config, String cacheName, Struct arguments) throws IOException {
+		super.init(arguments);
+		masterName = caster.toString(arguments.get("masterName", ""), "");
+		sentinels = RedisCacheUtils.toSet(caster.toString(arguments.get("sentinels", ""), "").split("\\r?\\n")); // TODO better
 	}
-	return pool.getResource();
-    }
+
+	@Override
+	protected Jedis _jedis() throws IOException {
+		if (pool == null) {
+			// we make sure we only have one pool
+			synchronized (TOKEN) {
+				if (pool == null) {
+					pool = new JedisSentinelPool(masterName, sentinels, getJedisPoolConfig(), timeout, password);
+				}
+			}
+		}
+		return pool.getResource();
+	}
 }

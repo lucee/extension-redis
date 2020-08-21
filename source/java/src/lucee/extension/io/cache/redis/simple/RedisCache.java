@@ -24,7 +24,12 @@ public class RedisCache extends AbstractRedisCache {
 	@Override
 	protected Jedis _jedis() throws IOException {
 		if (pool == null) {
-			pool = new JedisPool(getJedisPoolConfig(), host, port, timeout, password);
+			// we make sure we only have one pool
+			synchronized (TOKEN) {
+				if (pool == null) {
+					pool = new JedisPool(getJedisPoolConfig(), host, port, timeout, password);
+				}
+			}
 		}
 		return pool.getResource();
 	}

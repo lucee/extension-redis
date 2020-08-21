@@ -31,6 +31,7 @@ import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.exceptions.JedisDataException;
 
 public abstract class AbstractRedisCache extends CacheSupport {
+	protected final Object TOKEN = new Object();
 
 	public Functions func;
 	protected CFMLEngine engine = CFMLEngineFactory.getInstance();
@@ -153,8 +154,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	@Override
 	public boolean remove(String key) throws IOException {
-		Jedis conn = jedis();
+		Jedis conn = null;
 		try {
+			conn = jedis();
 			return conn.del(toKey(key)) > 0;
 		}
 		finally {
@@ -163,8 +165,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	}
 
 	public boolean remove(String[] keys) throws IOException {
-		Jedis conn = jedis();
+		Jedis conn = null;
 		try {
+			conn = jedis();
 			return conn.del(toKeys(keys)) > 0;
 		}
 		finally {
@@ -189,8 +192,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	@Override
 	public List<String> keys() throws IOException {
-		Jedis conn = jedis();
+		Jedis conn = null;
 		try {
+			conn = jedis();
 			return toList(conn.keys("*"));
 		}
 		finally {
@@ -204,8 +208,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	@Override
 	public List<String> keys(CacheKeyFilter filter) throws IOException {
-		Jedis conn = jedis();
+		Jedis conn = null;
 		try {
+			conn = jedis();
 			return _skeys(conn, filter);
 		}
 		finally {
@@ -377,8 +382,9 @@ public abstract class AbstractRedisCache extends CacheSupport {
 
 	@Override
 	public int clear() throws IOException {
-		Jedis conn = jedis();
+		Jedis conn = null;
 		try {
+			conn = jedis();
 			Set<String> set = conn.keys("*");
 			String[] keys = engine.getListUtil().toStringArray(set);
 			if (keys.length == 0) return 0;
@@ -476,10 +482,13 @@ public abstract class AbstractRedisCache extends CacheSupport {
 	}
 
 	protected Jedis jedisSilent() {
+		Jedis conn = null;
 		try {
-			return jedis();
+			conn = jedis();
+			return conn;
 		}
 		catch (Exception e) {
+			RedisCacheUtils.close(conn);
 			throw new RuntimeException(e);
 		}
 	}
