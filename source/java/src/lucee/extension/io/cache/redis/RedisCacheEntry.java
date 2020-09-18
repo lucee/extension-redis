@@ -3,31 +3,34 @@ package lucee.extension.io.cache.redis;
 import java.util.Date;
 
 import lucee.commons.io.cache.CacheEntry;
+import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.runtime.type.Struct;
 
 public class RedisCacheEntry implements CacheEntry {
 
-	private final AbstractRedisCache cache;
+	private final RedisCache cache;
 	private final byte[] bkey;
 	private final Object value;
 	private final long size;
+	private final DebugObject deObj;
 
-	public RedisCacheEntry(AbstractRedisCache cache, byte[] bkey, Object value, long size) {
+	public RedisCacheEntry(RedisCache cache, byte[] bkey, Object value, long size, DebugObject deObj) {
 		this.cache = cache;
 		this.bkey = bkey;
 		this.value = value;
 		this.size = size;
+		this.deObj = deObj;
 	}
 
 	@Override
 	public Date lastHit() {
-		return null; // TODO To change body of implemented methods use File | Settings | File Templates.
+		return null;
 	}
 
 	@Override
 	public Date lastModified() {
-		return null; // TODO To change body of implemented methods use File | Settings | File Templates.
+		return deObj == null ? null : deObj.getLRUTime();
 	}
 
 	@Override
@@ -52,7 +55,7 @@ public class RedisCacheEntry implements CacheEntry {
 
 	@Override
 	public long size() {
-		return size; // To change body of implemented methods use File | Settings | File Templates.
+		return deObj == null ? size : deObj.serializedLength; // To change body of implemented methods use File | Settings | File Templates.
 	}
 
 	@Override

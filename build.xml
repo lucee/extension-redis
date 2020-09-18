@@ -1,21 +1,87 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
-<project default="all" basedir="." name="Lucee">
-	<import file="build-classic.xml"/>
-	<import file="build-modern.xml"/>
+<project default="clean" basedir="." name="redis-extension">
+	<description>Build Redis Extension</description>
 
-	<target name="info" description="outputs information about all posible building options">
-		<echo>You have the following building options, call:</echo>
-		<echo>   "ant classic" to build a classic extension (Lucee LT 5)</echo>
-		<echo>   "ant modern" to build a modern extension (Lucee GTE 5)</echo>
-		<echo>   "ant all" (default) to build classic and modern extension</echo>
+
+	<import file="build-compile.xml"/>
+
+	<scriptdef name="replace" language="javascript">
+		<attribute name="haystack" />
+		<attribute name="needle" />
+		<attribute name="repl" />
+		<attribute name="property" />
+		<![CDATA[
+			var text = attributes.get("haystack");
+			var needle = attributes.get("needle");
+			var repl = attributes.get("repl");
+			text=text.trim();
+			text=text.replace(needle,repl);
+			project.setProperty(attributes.get("property"), text);
+		]]>
+	</scriptdef>
+
+	<target name="dist" depends="compile" description="copy source file to temp" >
+
+
+		<!-- Manifest of the extension -->
+		<echo file="${dist}/extension2/META-INF/MANIFEST.MF">Manifest-Version: 1.0
+Built-Date: ${NOW}
+version: "${bundleversion}${build.number}${bundleversion_appendix}"
+id: "${id}"
+name: "${label}"
+description: "${description}"
+start-bundles: false
+release-type: ${releaseType}
+cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
+</echo>
+
+
+		<!-- copy the jars necessary -->
+		<copy todir="${dist}/extension2/jars">
+			<fileset dir="${lib}">
+				<include name="**/*.jar"/>
+				<exclude name="**/javax.servlet.jar"/>
+				<exclude name="**/lucee*.jar"/>
+			</fileset>
+		</copy>
+
+		<!-- copy the jar just build -->
+		<copy todir="${dist}/extension2/jars">
+			<fileset dir="${temp}/jars/">
+				<include name="**/*.jar"/>
+			</fileset>
+		</copy>
+		<move
+			file="${dist}/extension2/jars/lucee.extension.${codename}.jar"
+			tofile="${dist}/extension2/jars/lucee.extension.${codename}-${bundleversion}${build.number}${bundleversion_appendix}.jar"/>
+
+
+		<!-- Redis.cfc -->
+		<loadfile property="content1" srcFile="${build}/context/admin/cdriver/${camelname}.cfc" />
+		<replace haystack="${content1}" needle="{class}" repl="${class}" property="content2"/>
+		<replace haystack="${content2}" needle="{label}" repl="${lab}" property="content3"/>
+		<replace haystack="${content3}" needle="{desc}" repl="${description}" property="content4"/>
+		<echo message="${content4}" file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc"/>
+
+		<!-- copy the logos -->
+		<copy todir="${dist}/extension2/META-INF">
+			<fileset dir="${build}/images">
+				<include name="logo.png"/>
+			</fileset>
+		</copy>
+
+		<!-- Zip everything  -->
+		<zip destfile="${dist}/${bundlename}-${bundleversion}${build.number}${bundleversion_appendix}.lex">
+				<zipfileset dir="${dist}/extension2"/>
+		</zip>
+
 	</target>
 
-	<target name="modern" depends="buildModern,clean" description="build build modern extension"></target>
-	<target name="classic" depends="buildClassic,clean" description="builds classic extension"></target>
-	<target name="all" depends="buildClassic,buildModern,clean" description="builds ALL classic and modern extension"></target>
-
-	<target name="clean" description="clean up" >
+	<target name="clean"  depends="dist" description="clean up" >
 		<delete dir="${temp}"/>
 		<delete dir="${dist}/extension2"/>
 	</target>
+
+
+
 </project>
