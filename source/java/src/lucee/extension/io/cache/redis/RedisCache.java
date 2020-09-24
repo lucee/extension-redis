@@ -154,7 +154,6 @@ public class RedisCache extends CacheSupport {
 		try {
 			byte[] bkey = Coder.toKey(key);
 			conn.call("SET", bkey, Coder.serialize(val));
-
 			int ex = 0;
 			if (expire != null) {
 				ex = (int) (expire / 1000);
@@ -284,6 +283,8 @@ public class RedisCache extends CacheSupport {
 		boolean all = CacheUtil.allowAll(filter);
 		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", "*");
 		List<byte[]> list = new ArrayList<byte[]>();
+		if (skeys == null || skeys.size() == 0) return list;
+
 		Iterator<byte[]> it = skeys.iterator();
 		byte[] key;
 		while (it.hasNext()) {
