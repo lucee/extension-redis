@@ -149,21 +149,27 @@ public class RedisCache extends CacheSupport {
 	}
 
 	@Override
-	public void put(String key, Object val, Long idle, Long expire) throws IOException {
+	public void put(String key, Object val, Long idle, Long live) throws IOException {
 		Redis conn = getConnection();
 		try {
 			byte[] bkey = Coder.toKey(key);
 			conn.call("SET", bkey, Coder.serialize(val));
-			int ex = 0;
-			if (expire != null) {
-				ex = (int) (expire / 1000);
+			// expires
+			int exp;
+			if (live != null && live.longValue() > 0) {
+				exp = (int) (live.longValue() / 1000);
+				if (exp < 1) exp = 1;
+			}
+			else if (idle != null && idle.longValue() > 0) {
+				exp = (int) (idle.longValue() / 1000);
+				if (exp < 1) exp = 1;
 			}
 			else {
-				ex = defaultExpire;
+				exp = defaultExpire;
 			}
 
-			if (ex > 0) {
-				conn.call("EXPIRE", bkey, Integer.toString(ex));
+			if (exp > 0) {
+				conn.call("EXPIRE", bkey, Integer.toString(exp));
 			}
 		}
 		catch (IOException ioe) {
