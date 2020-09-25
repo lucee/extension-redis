@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
 import org.apache.commons.pool2.impl.GenericObjectPool;
@@ -18,6 +19,7 @@ import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.util.Coder;
 import lucee.extension.io.cache.util.RedisUtil;
+import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -47,6 +49,9 @@ public class RedisCache extends CacheSupport {
 	private int port;
 
 	private String username;
+	private boolean async = true;
+
+	private Storage storage;
 
 	public void init(Config config, String[] cacheName, Struct[] arguments) {
 		// Not used at the moment
@@ -77,6 +82,10 @@ public class RedisCache extends CacheSupport {
 
 		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, debug), getPoolConfig(arguments));
 
+		if (async) {
+			storage = new Storage(this);
+			storage.start();
+		}
 	}
 
 	protected GenericObjectPoolConfig getPoolConfig(Struct arguments) throws IOException {
@@ -104,8 +113,15 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public CacheEntry getCacheEntry(String skey) throws IOException {
-		Redis conn = getConnection();
 		byte[] bkey = Coder.toKey(skey);
+		if (async) {
+			NearCacheEntry val = storage.get(bkey);
+			if (val != null) {
+				return val;
+			}
+			storage.doJoin();
+		}
+		Redis conn = getConnection();
 		try {
 			byte[] val = null;
 			try {
@@ -117,7 +133,7 @@ public class RedisCache extends CacheSupport {
 			}
 			if (val == null) throw new IOException("Cache key [" + skey + "] does not exists");
 
-			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length, getDebugObject(conn, bkey));
+			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
 		}
 		catch (Exception e) {
 			RedisUtil.invalidateObjectEL(pool, conn);
@@ -129,7 +145,7 @@ public class RedisCache extends CacheSupport {
 		}
 	}
 
-	private DebugObject getDebugObject(Redis conn, byte[] bkey) throws IOException {
+	DebugObject getDebugObject(Redis conn, byte[] bkey) throws IOException {
 		Object res = conn.call("DEBUG", "OBJECT", bkey);
 		DebugObject deObj = null;
 		if (res instanceof byte[]) {
@@ -150,23 +166,32 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public void put(String key, Object val, Long idle, Long live) throws IOException {
+		// expires
+		int exp;
+		if (live != null && live.longValue() > 0) {
+			exp = (int) (live.longValue() / 1000);
+			if (exp < 1) exp = 1;
+		}
+		else if (idle != null && idle.longValue() > 0) {
+			exp = (int) (idle.longValue() / 1000);
+			if (exp < 1) exp = 1;
+		}
+		else {
+			exp = defaultExpire;
+		}
+		byte[] bkey = Coder.toKey(key);
+
+		if (async) {
+			storage.put(bkey, val, exp);
+		}
+		else put(bkey, val, exp);
+	}
+
+	private void put(byte[] bkey, Object val, int exp) throws IOException {
+
 		Redis conn = getConnection();
 		try {
-			byte[] bkey = Coder.toKey(key);
 			conn.call("SET", bkey, Coder.serialize(val));
-			// expires
-			int exp;
-			if (live != null && live.longValue() > 0) {
-				exp = (int) (live.longValue() / 1000);
-				if (exp < 1) exp = 1;
-			}
-			else if (idle != null && idle.longValue() > 0) {
-				exp = (int) (idle.longValue() / 1000);
-				if (exp < 1) exp = 1;
-			}
-			else {
-				exp = defaultExpire;
-			}
 
 			if (exp > 0) {
 				conn.call("EXPIRE", bkey, Integer.toString(exp));
@@ -184,9 +209,14 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public boolean contains(String key) throws IOException {
+		byte[] bkey = Coder.toKey(key);
+		if (async) {
+			NearCacheEntry val = storage.get(bkey);
+			if (val != null) return true;
+		}
 		Redis conn = getConnection();
 		try {
-			return engine.getCastUtil().toBooleanValue(conn.call("EXISTS", Coder.toKey(key)));
+			return engine.getCastUtil().toBooleanValue(conn.call("EXISTS", bkey));
 		}
 		catch (Exception e) {
 			RedisUtil.invalidateObjectEL(pool, conn);
@@ -200,6 +230,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public boolean remove(String key) throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
@@ -215,6 +246,7 @@ public class RedisCache extends CacheSupport {
 	}
 
 	public boolean remove(String[] keys) throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
@@ -231,6 +263,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public int remove(CacheKeyFilter filter) throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
@@ -251,6 +284,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public List<String> keys() throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return toList((List<byte[]>) conn.call("KEYS", "*"));
@@ -271,6 +305,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public List<String> keys(CacheKeyFilter filter) throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return _skeys(conn, filter);
@@ -320,6 +355,8 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public List<CacheEntry> entries(CacheKeyFilter filter) throws IOException {
+		if (async) storage.doJoin();
+
 		Redis conn = getConnection();
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
@@ -336,7 +373,7 @@ public class RedisCache extends CacheSupport {
 				byte[] k;
 				for (byte[] val: values) {
 					k = keys[i++];
-					list.add(new RedisCacheEntry(this, k, Coder.evaluate(cl, val), val.length, getDebugObject(conn, k)));
+					list.add(new RedisCacheEntry(this, k, Coder.evaluate(cl, val), val.length));
 				}
 			}
 			else {
@@ -347,7 +384,7 @@ public class RedisCache extends CacheSupport {
 						val = (byte[]) conn.call("GET", key);
 					}
 					catch (Exception jde) {}
-					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length, getDebugObject(conn, key)));
+					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length));
 				}
 			}
 			return list;
@@ -373,6 +410,7 @@ public class RedisCache extends CacheSupport {
 	// a generic type at all here, just to be sure
 	@Override
 	public List values(CacheKeyFilter filter) throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
@@ -408,6 +446,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public Struct getCustomInfo() throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
@@ -444,6 +483,7 @@ public class RedisCache extends CacheSupport {
 
 	@Override
 	public int clear() throws IOException {
+		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
@@ -500,4 +540,120 @@ public class RedisCache extends CacheSupport {
 			if (conn != null) pool.returnObject(conn);
 		}
 	}
+
+	private static class Storage extends Thread {
+
+		private ConcurrentLinkedDeque<NearCacheEntry> entries;
+		private RedisCache cache;
+		private CFMLEngine engine;
+		private long current = Long.MAX_VALUE;
+
+		public Storage(RedisCache cache) {
+			this.engine = CFMLEngineFactory.getInstance();
+			this.cache = cache;
+			this.entries = new ConcurrentLinkedDeque<>();
+		}
+
+		public NearCacheEntry get(byte[] bkey) {
+			if (entries.isEmpty()) return null;
+			Object[] arr = entries.toArray();
+			NearCacheEntry e;
+			for (Object obj: arr) {
+				e = (NearCacheEntry) obj;
+				if (equals(e.getByteKey(), bkey)) return e;
+			}
+			return null;
+		}
+
+		public long getCurrent() {
+			return current;
+		}
+
+		public void doJoin() {
+			// wait until it is done, but not to long in case of a constant stream
+			long start = System.currentTimeMillis();
+			NearCacheEntry entry;
+			int max = 1000;
+
+			while ((entry = entries.peek()) != null) {
+				if (--max <= 0) break;
+				if (entry.createdTime() > start) break;
+				synchronized (this) {
+					try {
+						this.sleep(1);
+					}
+					catch (Exception e) {}
+				}
+			}
+			if (getCurrent() <= start) {
+				while (true) {
+					if (--max <= 0) break;
+					if (getCurrent() > start) break;
+					synchronized (this) {
+						try {
+							this.sleep(1);
+						}
+						catch (Exception e) {}
+					}
+				}
+			}
+		}
+
+		public void put(byte[] bkey, Object val, int exp) {
+			entries.add(new NearCacheEntry(bkey, val, exp));
+			synchronized (this) {
+				this.notify();
+			}
+		}
+
+		@Override
+		public void run() {
+			while (true) {
+				NearCacheEntry entry;
+				try {
+
+					// TODO engine.public boolean isRunning()
+					while ((entry = entries.poll()) != null) {
+						current = entry.createdTime();
+						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						current = Long.MAX_VALUE;
+					}
+					synchronized (this) {
+						this.wait();
+					}
+				}
+				catch (Exception e) {
+					synchronized (this) {
+						try {
+							this.sleep(1000); // slow down in case of an issue
+						}
+						catch (InterruptedException ie) {
+							print.e(ie);
+						}
+					}
+				}
+			}
+		}
+
+		private static boolean equals(byte[] left, byte[] right) {
+			if (left.length != right.length) return false;
+
+			for (int i = 0; i < left.length; i++) {
+				if (left[i] != right[i]) return false;
+			}
+			return true;
+		}
+	}
+
+	/*
+	 * private static class StorageThread extends Thread {
+	 * 
+	 * public StorageThread() {
+	 * 
+	 * }
+	 * 
+	 * public void run() {
+	 * 
+	 * } }
+	 */
 }
