@@ -31,7 +31,7 @@ public class Coder {
 	}
 
 	public static byte[][] toKeys(String[] keys) {
-		byte[][] arr = new byte[keys.length][];
+		byte[][] arr = new byte[keys == null ? 0 : keys.length][];
 		for (int i = 0; i < keys.length; i++) {
 			arr[i] = keys[i].trim().toLowerCase().getBytes(UTF8);
 		}

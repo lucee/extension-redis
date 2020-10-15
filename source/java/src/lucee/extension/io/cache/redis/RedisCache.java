@@ -19,7 +19,6 @@ import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.util.Coder;
 import lucee.extension.io.cache.util.RedisUtil;
-import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -246,6 +245,7 @@ public class RedisCache extends CacheSupport {
 	}
 
 	public boolean remove(String[] keys) throws IOException {
+		if (keys == null || keys.length == 0) return false;
 		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
@@ -321,8 +321,9 @@ public class RedisCache extends CacheSupport {
 	}
 
 	private List<byte[]> _bkeys(Redis conn, CacheKeyFilter filter) throws IOException {
-		boolean all = CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", "*");
+		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
+		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
 		List<byte[]> list = new ArrayList<byte[]>();
 		if (skeys == null || skeys.size() == 0) return list;
 
@@ -336,10 +337,13 @@ public class RedisCache extends CacheSupport {
 	}
 
 	private List<String> _skeys(Redis conn, CacheKeyFilter filter) throws IOException {
-		boolean all = CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", "*");
+		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
+		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
 		List<String> list = new ArrayList<String>();
 		Iterator<byte[]> it = skeys.iterator();
+		if (skeys == null || skeys.size() == 0) return list;
+
 		byte[] key;
 		while (it.hasNext()) {
 			key = it.next();
@@ -463,9 +467,11 @@ public class RedisCache extends CacheSupport {
 
 	private List<String> toList(Collection<byte[]> keys) throws IOException {
 		List<String> list = new ArrayList<String>();
-		Iterator<byte[]> it = keys.iterator();
-		while (it.hasNext()) {
-			list.add(new String(it.next(), Coder.UTF8));
+		if (keys != null) {
+			Iterator<byte[]> it = keys.iterator();
+			while (it.hasNext()) {
+				list.add(new String(it.next(), Coder.UTF8));
+			}
 		}
 		return list;
 	}
@@ -487,7 +493,7 @@ public class RedisCache extends CacheSupport {
 		Redis conn = getConnection();
 		try {
 			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
-			if (bkeys.size() == 0) return 0;
+			if (bkeys == null || bkeys.size() == 0) return 0;
 			return engine.getCastUtil().toIntValue(conn.call("DEL", bkeys), 0);
 		}
 		catch (Exception e) {
@@ -501,9 +507,11 @@ public class RedisCache extends CacheSupport {
 	}
 
 	protected Redis getConnection() throws IOException {
-		int actives = pool.getNumActive();
-		int idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
+		if (debug) {
+			int actives = pool.getNumActive();
+			int idle = pool.getNumIdle();
+			System.out.println("SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
+		}
 
 		if (debug) System.out.println(">>>>> borrowObject start");
 		Redis redis;
@@ -515,9 +523,11 @@ public class RedisCache extends CacheSupport {
 		}
 		if (debug) System.out.println(">>>>> borrowObject end");
 
-		actives = pool.getNumActive();
-		idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.getConnection after now actives : " + actives + ", idle : " + idle);
+		if (debug) {
+			int actives = pool.getNumActive();
+			int idle = pool.getNumIdle();
+			System.out.println("SocketUtil.getConnection after now actives : " + actives + ", idle : " + idle);
+		}
 
 		return redis;
 	}
@@ -627,9 +637,7 @@ public class RedisCache extends CacheSupport {
 						try {
 							this.sleep(1000); // slow down in case of an issue
 						}
-						catch (InterruptedException ie) {
-							print.e(ie);
-						}
+						catch (InterruptedException ie) {}
 					}
 				}
 			}
