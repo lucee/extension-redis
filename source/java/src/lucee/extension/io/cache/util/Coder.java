@@ -5,9 +5,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.StreamCorruptedException;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.HashMap;
 
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
@@ -16,13 +16,31 @@ import lucee.runtime.exp.PageException;
 
 public class Coder {
 
+	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5, 115, 114 };
+
 	public static final Charset UTF8 = Charset.forName("UTF-8");
 
 	public static byte[] toKey(String key) {
 		return key.trim().toLowerCase().getBytes(UTF8);
 	}
 
+	public static byte[] toBytes(String val) {
+		return val.getBytes(UTF8);
+	}
+
+	public static byte[][] toBytesArrays(String[] values) {
+		byte[][] results = new byte[values.length][];
+		for (int i = 0; i < results.length; i++) {
+			results[i] = Coder.toBytes(values[i]);
+		}
+		return results;
+	}
+
 	public static String toKey(byte[] bkey) {
+		return new String(bkey, UTF8);
+	}
+
+	public static String toString(byte[] bkey) {
 		return new String(bkey, UTF8);
 	}
 
@@ -40,6 +58,9 @@ public class Coder {
 
 	public static Object evaluate(ClassLoader cl, byte[] data) throws IOException {
 		if (data == null) return null;
+
+		if (!isObjectStream(data)) return toString(data);
+
 		ByteArrayInputStream bais = new ByteArrayInputStream(data);
 		ObjectInputStream ois = null;
 		try {
@@ -47,25 +68,25 @@ public class Coder {
 			return ois.readObject();
 		}
 		// happens when the object is not ObjectOutputstream serialized
-		catch (StreamCorruptedException sce) {
-			try {
-				return evaluateLegacy(new String(data, "UTF-8"));
-			}
-			catch (UnsupportedEncodingException uee) {
-				return evaluateLegacy(new String(data));
-			}
-		}
 		catch (Exception e) {
 			try {
-				return evaluateLegacy(new String(data, "UDF-8"));
+				return toString(data);
 			}
-			catch (UnsupportedEncodingException uee) {
+			catch (Exception ee) {
 				throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 			}
 		}
 		finally {
 			Util.closeEL(ois);
 		}
+	}
+
+	private static boolean isObjectStream(byte[] data) {
+		if (data == null || data.length < OBJECT_STREAM_HEADER.length) return false;
+		for (int i = 0; i < OBJECT_STREAM_HEADER.length; i++) {
+			if (data[i] != OBJECT_STREAM_HEADER[i]) return false;
+		}
+		return true;
 	}
 
 	private static Object evaluateLegacy(String val) throws IOException {
@@ -98,11 +119,22 @@ public class Coder {
 	}
 
 	public static byte[] serialize(Object value) throws IOException {
+		if (value instanceof CharSequence) return toBytes(value.toString());
+		// if (value instanceof Number) return toBytes(value.toString());
+		// if (value instanceof Boolean) return toBytes(value.toString());
+
 		ByteArrayOutputStream os = new ByteArrayOutputStream(); // returns
 		ObjectOutputStream oos = new ObjectOutputStream(os);
 		oos.writeObject(value);
 		oos.flush();
 		return os.toByteArray();
+	}
+
+	public static void main(String[] args) throws IOException {
+		ClassLoader cl = Coder.class.getClassLoader();
+		print.e(evaluate(cl, serialize("abc")));
+		print.e(evaluate(cl, serialize(new ArrayList<>())));
+		print.e(evaluate(cl, serialize(new HashMap<>())));
 	}
 
 }

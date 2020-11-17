@@ -23,6 +23,7 @@ import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 import lucee.runtime.config.Config;
+import lucee.runtime.type.Array;
 import lucee.runtime.type.Struct;
 import lucee.runtime.util.Cast;
 
@@ -52,9 +53,8 @@ public class RedisCache extends CacheSupport {
 
 	private Storage storage;
 
-	public void init(Config config, String[] cacheName, Struct[] arguments) {
+	public static void init(Config config, String[] cacheName, Struct[] arguments) {
 		// Not used at the moment
-		this.cl = config.getClass().getClassLoader();
 	}
 
 	@Override
@@ -465,7 +465,7 @@ public class RedisCache extends CacheSupport {
 		}
 	}
 
-	private List<String> toList(Collection<byte[]> keys) throws IOException {
+	public static List<String> toList(Collection<byte[]> keys) throws IOException {
 		List<String> list = new ArrayList<String>();
 		if (keys != null) {
 			Iterator<byte[]> it = keys.iterator();
@@ -474,6 +474,17 @@ public class RedisCache extends CacheSupport {
 			}
 		}
 		return list;
+	}
+
+	public static Array toArray(Collection<byte[]> keys) throws IOException {
+		Array array = CFMLEngineFactory.getInstance().getCreationUtil().createArray();
+		if (keys != null) {
+			Iterator<byte[]> it = keys.iterator();
+			while (it.hasNext()) {
+				array.appendEL(new String(it.next(), Coder.UTF8));
+			}
+		}
+		return array;
 	}
 
 	// CachePro interface @Override
@@ -653,15 +664,35 @@ public class RedisCache extends CacheSupport {
 		}
 	}
 
-	/*
-	 * private static class StorageThread extends Thread {
-	 * 
-	 * public StorageThread() {
-	 * 
-	 * }
-	 * 
-	 * public void run() {
-	 * 
-	 * } }
-	 */
+	public Object command(String... arguments) throws IOException {
+		if (async) storage.doJoin();
+		Redis conn = getConnection();
+		try {
+			return conn.call(Coder.toBytesArrays(arguments));
+		}
+		catch (Exception e) {
+			RedisUtil.invalidateObjectEL(pool, conn);
+			conn = null;
+			throw engine.getExceptionUtil().toIOException(e);
+		}
+		finally {
+			if (conn != null) pool.returnObject(conn);
+		}
+	}
+
+	public Object command(byte[]... arguments) throws IOException {
+		if (async) storage.doJoin();
+		Redis conn = getConnection();
+		try {
+			return conn.call(arguments);
+		}
+		catch (Exception e) {
+			RedisUtil.invalidateObjectEL(pool, conn);
+			conn = null;
+			throw engine.getExceptionUtil().toIOException(e);
+		}
+		finally {
+			if (conn != null) pool.returnObject(conn);
+		}
+	}
 }

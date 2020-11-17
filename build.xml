@@ -2,6 +2,7 @@
 <project default="clean" basedir="." name="redis-extension">
 	<description>Build Redis Extension</description>
 
+  <property name="fld" location="source/fld"/>
 
 	<import file="build-compile.xml"/>
 
@@ -44,6 +45,13 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 				<exclude name="**/lucee*.jar"/>
 			</fileset>
 		</copy>
+
+		<!-- copy the flds necessary -->
+	    <loadfile property="c1" srcFile="${fld}/function.fld" />
+	    <replace haystack="${c1}" needle="{bundle-name}" repl="${bundlename}" property="c2"/>
+	    <replace haystack="${c2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="c3"/>
+	    <echo message="${c3}" file="${dist}/extension2/flds/lucee-redis.fld"/>
+
 
 		<!-- copy the jar just build -->
 		<copy todir="${dist}/extension2/jars">

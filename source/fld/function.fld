@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE func-lib PUBLIC "-//Lucee//DTD CFML Function Library 1.0//EN"
+	"dtd/web-cfmfunctionlibrary_1_0.dtd">
+<!-- http://www.getrailo.com/j2ee/dtd/web-jspfunctionlibrary_1_0.dtd -->
+<func-lib>
+	<flib-version>1.00</flib-version>
+	<short-name>Redis</short-name>
+	<uri>http://redis.lucee.org</uri>
+	<display-name>Redis</display-name>
+	<description>
+		Redis functions
+	</description>
+
+	
+	<!-- RedisCommand -->
+	<function>
+		<name>RedisCommand</name>
+		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisCommand</class>
+		<keywords>cache,redis</keywords>
+		<description>execute any redis function without any interpretation from Lucee.</description>
+		<argument>
+			<name>arguments</name>
+			<type>any</type>
+			<required>true</required>
+			<description>arguments you wanna pass, can be a string or a string array.</description>
+	    </argument>
+	    <argument>
+			<name>async</name>
+			<type>boolean</type>
+			<default>false</default>
+			<required>false</required>
+			<description>Execute the command in a separate thread, if set to true pass a listener to get the result ot the errors.</description>
+	    </argument>
+	    <argument>
+			<name>listener</name>
+			<alias>component,cfc</alias>
+			<type>any</type>
+			<required>false</required>
+			<description>Listener only used when argument async is set to true. This can be a component or a struct containing functions with the following names.
+				"onSucess(result)" to get the result of a sucessfull execution.
+				"onError(exception)" to get the exception in case of an error.
+			</description>
+	    </argument>
+	    <argument>
+			<name>cache</name>
+			<alias>cacheName</alias>
+			<type>string</type>
+			<required>no</required>
+			<description>name of the cache to use, this must be a redis cache.</description>
+	    </argument>
+		<return>
+			<type>any</type>
+		</return>
+	</function>
+
+</func-lib>
