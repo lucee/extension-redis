@@ -79,7 +79,7 @@ public class RedisCache extends CacheSupport {
 
 		debug = caster.toBooleanValue(arguments.get("debug", null), false);
 
-		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, debug), getPoolConfig(arguments));
+		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, timeout, debug), getPoolConfig(arguments));
 
 		if (async) {
 			storage = new Storage(this);

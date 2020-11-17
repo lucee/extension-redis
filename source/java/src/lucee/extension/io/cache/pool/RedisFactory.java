@@ -17,12 +17,14 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	private final boolean debug;
 	private final String username;
 	private final String password;
+	private int socketTimeout;
 
-	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, boolean debug) {
+	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, int socketTimeout, boolean debug) {
 		this.cl = cl;
 		this.username = Util.isEmpty(username) ? null : username;
 		this.password = Util.isEmpty(password) ? null : password;
 		serverInfo = new InetSocketAddress(host, port);
+		this.socketTimeout = socketTimeout;
 		this.debug = debug;
 	}
 
@@ -30,7 +32,8 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	public Redis create() throws IOException {
 		if (debug) System.out.println(">>>>> SocketFactory.create...");
 		Socket socket = new Socket();
-		socket.connect(serverInfo);
+		if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
+		else socket.connect(serverInfo);
 		Redis redis = new Redis(cl, socket);
 		if (password != null) {
 			if (username != null) redis.call("AUTH", username, password);
