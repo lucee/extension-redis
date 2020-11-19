@@ -377,7 +377,7 @@ public class RedisCache extends CacheSupport {
 				byte[] k;
 				for (byte[] val: values) {
 					k = keys[i++];
-					list.add(new RedisCacheEntry(this, k, Coder.evaluate(cl, val), val.length));
+					list.add(new RedisCacheEntry(this, k, val == null ? null : Coder.evaluate(cl, val), val == null ? 0 : val.length));
 				}
 			}
 			else {
