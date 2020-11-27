@@ -10,7 +10,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import lucee.commons.io.cache.Cache;
+import lucee.extension.io.cache.redis.Command;
 import lucee.extension.io.cache.redis.RedisCache;
+import lucee.extension.io.cache.redis.RedisCacheProxy;
 import lucee.extension.io.cache.util.Coder;
 import lucee.extension.io.cache.util.RedisUtil;
 import lucee.loader.engine.CFMLEngine;
@@ -52,13 +54,15 @@ public class RedisCommand extends BIF implements Function {
 		String cacheName = args.length >= 4 && args[3] != null ? cast.toString(args[3]).toUpperCase() : null;
 
 		// is the cache a Redis Cache?
+		Command rc = null;
 		Cache cache = RedisUtil.getCache(pc, cacheName, Config.CACHE_TYPE_OBJECT);
-		if (!(cache instanceof RedisCache))
-			throw eng.getExceptionUtil().createApplicationException("cache [" + cacheName + "; class:" + cache.getClass().getName() + "] is not a redis cache");
-
-		RedisCache rc = (RedisCache) cache;
+		if (!(cache instanceof Command)) {
+			if (!cache.getClass().getName().equals(RedisCache.class.getName()))
+				throw eng.getExceptionUtil().createApplicationException("cache [" + cacheName + "; class:" + cache.getClass().getName() + "] is not a redis cache");
+			rc = new RedisCacheProxy(cache);
+		}
+		else rc = (Command) cache;
 		try {
-
 			if (async) {
 				executor.execute(new Executable(eng, pc, rc, listener, _args));
 				return null;
@@ -103,12 +107,12 @@ public class RedisCommand extends BIF implements Function {
 
 		private CFMLEngine eng;
 		private Config config;
-		private RedisCache rc;
+		private Command rc;
 		private Object listener;
 		private byte[][] args;
 		private PageContext pc;
 
-		public Executable(CFMLEngine eng, PageContext parent, RedisCache rc, Object listener, byte[][] args) throws PageException {
+		public Executable(CFMLEngine eng, PageContext parent, Command rc, Object listener, byte[][] args) throws PageException {
 			this.eng = eng;
 			this.config = parent.getConfig();
 			this.pc = clonePageContext(parent);
@@ -120,6 +124,7 @@ public class RedisCommand extends BIF implements Function {
 		@Override
 		public void run() {
 			try {
+				if (pc != null) eng.registerThreadPageContext(pc);
 				Object res = evalResult(config.getClass().getClassLoader(), rc.command(args));
 				if (has(pc, ON_SUCCESS)) {
 					eng.registerThreadPageContext(pc);
