@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -23,6 +24,7 @@ import lucee.runtime.config.Config;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.ext.function.BIF;
 import lucee.runtime.ext.function.Function;
+import lucee.runtime.type.Array;
 import lucee.runtime.type.Collection;
 import lucee.runtime.type.Collection.Key;
 import lucee.runtime.type.Struct;
@@ -48,7 +50,7 @@ public class RedisCommand extends BIF implements Function {
 		if (args.length < 1 || args.length > 4) throw eng.getExceptionUtil().createFunctionException(pc, "RedisCommand", 1, 4, args.length);
 		Cast cast = eng.getCastUtil();
 
-		byte[][] _args = toBytesArray(eng, args[0]);
+		Object _args = toBytesArray(eng, args[0]);
 		boolean async = args.length >= 2 && args[1] != null ? cast.toBooleanValue(args[1]) : false;
 		Object listener = args.length >= 3 && args[2] != null ? args[2] : null;
 		String cacheName = args.length >= 4 && args[3] != null ? cast.toString(args[3]).toUpperCase() : null;
@@ -67,8 +69,8 @@ public class RedisCommand extends BIF implements Function {
 				executor.execute(new Executable(eng, pc, rc, listener, _args));
 				return null;
 			}
-			return evalResult(pc.getClass().getClassLoader(), rc.command(_args));
-
+			if (_args instanceof byte[][]) return evalResult(pc.getClass().getClassLoader(), rc.command((byte[][]) _args));
+			return evalResult(pc.getClass().getClassLoader(), rc.command((List<byte[][]>) _args));
 		}
 		catch (IOException e) {
 			throw eng.getCastUtil().toPageException(e);
@@ -79,12 +81,41 @@ public class RedisCommand extends BIF implements Function {
 		if (res instanceof CharSequence) return res.toString();
 		else if (res instanceof byte[]) return Coder.evaluate(cl, (byte[]) res);
 		else if (res instanceof Number) return Double.valueOf(((Number) res).doubleValue());
-		else if (res instanceof List) return RedisCache.toArray((List) res);
+		else if (res instanceof java.util.Collection) return toArray(cl, (java.util.Collection<byte[]>) res);
 		return res;
 	}
 
-	private byte[][] toBytesArray(CFMLEngine eng, Object args) throws PageException {
+	public static Array toArray(ClassLoader cl, java.util.Collection<byte[]> keys) throws IOException {
+		Array array = CFMLEngineFactory.getInstance().getCreationUtil().createArray();
+		if (keys != null) {
+			Iterator<byte[]> it = keys.iterator();
+			while (it.hasNext()) {
+				array.appendEL(evalResult(cl, it.next()));
+			}
+		}
+		return array;
+	}
+
+	private Object toBytesArray(CFMLEngine eng, Object args) throws PageException {
 		List listArgs = eng.getCastUtil().toList(args);
+		if (listArgs.size() == 0) return new byte[0][];
+
+		// do we multiple arguments record
+		Object obj = listArgs.iterator().next();
+		if (eng.getDecisionUtil().isSimpleValue(obj)) {
+			return _toBytesArray(eng, listArgs);
+		}
+
+		List<byte[][]> listRtn = new ArrayList<>();
+		Iterator it = listArgs.iterator();
+		while (it.hasNext()) {
+			listRtn.add(_toBytesArray(eng, eng.getCastUtil().toList(it.next())));
+		}
+		return listRtn;
+	}
+
+	private byte[][] _toBytesArray(CFMLEngine eng, List listArgs) throws PageException {
+		if (listArgs.size() == 0) return new byte[0][];
 		try {
 			byte[][] arguments = new byte[listArgs.size()][];
 			Iterator it = listArgs.iterator();
@@ -109,10 +140,10 @@ public class RedisCommand extends BIF implements Function {
 		private Config config;
 		private Command rc;
 		private Object listener;
-		private byte[][] args;
+		private Object args;
 		private PageContext pc;
 
-		public Executable(CFMLEngine eng, PageContext parent, Command rc, Object listener, byte[][] args) throws PageException {
+		public Executable(CFMLEngine eng, PageContext parent, Command rc, Object listener, Object args) throws PageException {
 			this.eng = eng;
 			this.config = parent.getConfig();
 			this.pc = clonePageContext(parent);
@@ -125,7 +156,10 @@ public class RedisCommand extends BIF implements Function {
 		public void run() {
 			try {
 				if (pc != null) eng.registerThreadPageContext(pc);
-				Object res = evalResult(config.getClass().getClassLoader(), rc.command(args));
+				Object res;
+				if (args instanceof byte[][]) res = evalResult(config.getClass().getClassLoader(), rc.command((byte[][]) args));
+				else res = evalResult(config.getClass().getClassLoader(), rc.command((List<byte[][]>) args));
+
 				if (has(pc, ON_SUCCESS)) {
 					eng.registerThreadPageContext(pc);
 					call(pc, ON_SUCCESS, new Object[] { res });

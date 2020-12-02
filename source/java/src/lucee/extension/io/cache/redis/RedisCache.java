@@ -17,17 +17,17 @@ import lucee.commons.io.cache.CacheKeyFilter;
 import lucee.commons.io.cache.exp.CacheException;
 import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
+import lucee.extension.io.cache.redis.Redis.Pipeline;
 import lucee.extension.io.cache.util.Coder;
 import lucee.extension.io.cache.util.RedisUtil;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 import lucee.runtime.config.Config;
-import lucee.runtime.type.Array;
 import lucee.runtime.type.Struct;
 import lucee.runtime.util.Cast;
 
-public class RedisCache extends CacheSupport {
+public class RedisCache extends CacheSupport implements Command {
 	protected final Object TOKEN = new Object();
 
 	protected CFMLEngine engine = CFMLEngineFactory.getInstance();
@@ -476,16 +476,12 @@ public class RedisCache extends CacheSupport {
 		return list;
 	}
 
-	public static Array toArray(Collection<byte[]> keys) throws IOException {
-		Array array = CFMLEngineFactory.getInstance().getCreationUtil().createArray();
-		if (keys != null) {
-			Iterator<byte[]> it = keys.iterator();
-			while (it.hasNext()) {
-				array.appendEL(new String(it.next(), Coder.UTF8));
-			}
-		}
-		return array;
-	}
+	/*
+	 * public static Array toArray(ClassLoader cl, Collection<byte[]> keys) throws IOException { Array
+	 * array = CFMLEngineFactory.getInstance().getCreationUtil().createArray(); if (keys != null) {
+	 * Iterator<byte[]> it = keys.iterator(); while (it.hasNext()) { array.appendEL(evalResult(cl,
+	 * it.next())); } } return array; }
+	 */
 
 	// CachePro interface @Override
 	public Cache decouple() {
@@ -680,11 +676,33 @@ public class RedisCache extends CacheSupport {
 		}
 	}
 
-	public Object command(byte[]... arguments) throws IOException {
+	@Override
+	public Object command(byte[][] arguments) throws IOException {
 		if (async) storage.doJoin();
 		Redis conn = getConnection();
 		try {
 			return conn.call(arguments);
+		}
+		catch (Exception e) {
+			RedisUtil.invalidateObjectEL(pool, conn);
+			conn = null;
+			throw engine.getExceptionUtil().toIOException(e);
+		}
+		finally {
+			if (conn != null) pool.returnObject(conn);
+		}
+	}
+
+	@Override
+	public List<Object> command(List<byte[][]> arguments) throws IOException {
+		if (async) storage.doJoin();
+		Redis conn = getConnection();
+		try {
+			Pipeline pl = conn.pipeline();
+			for (byte[][] args: arguments) {
+				pl.call(args);
+			}
+			return pl.read();
 		}
 		catch (Exception e) {
 			RedisUtil.invalidateObjectEL(pool, conn);

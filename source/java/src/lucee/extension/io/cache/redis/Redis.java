@@ -373,7 +373,7 @@ public class Redis {
 		 * @return self for chaining
 		 * @throws IOException Propagated from underlying server.
 		 */
-		public abstract Pipeline call(String... args) throws IOException;
+		public abstract Pipeline call(Object... args) throws IOException;
 
 		/**
 		 * Returns an aligned list of responses for each of the calls.
@@ -381,7 +381,8 @@ public class Redis {
 		 * @return The responses
 		 * @throws IOException Propagated from underlying server.
 		 */
-		public abstract List<Object> read() throws IOException;
+		public abstract <T> List<T> read() throws IOException;
+
 	}
 
 	/**
@@ -395,7 +396,7 @@ public class Redis {
 			private int n = 0;
 
 			@Override
-			public Pipeline call(String... args) throws IOException {
+			public Pipeline call(Object... args) throws IOException {
 				writer.write(args);
 				writer.flush();
 				n++;
