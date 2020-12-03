@@ -59,7 +59,8 @@ public class RedisCommand extends BIF implements Function {
 		Command rc = null;
 		Cache cache = RedisUtil.getCache(pc, cacheName, Config.CACHE_TYPE_OBJECT);
 		if (!(cache instanceof Command)) {
-			if (!cache.getClass().getName().equals(RedisCache.class.getName()))
+			if (!cache.getClass().getName().equals(RedisCache.class.getName())
+					&& !cache.getClass().getName().equals(lucee.extension.io.cache.redis.simple.RedisCache.class.getName()))
 				throw eng.getExceptionUtil().createApplicationException("cache [" + cacheName + "; class:" + cache.getClass().getName() + "] is not a redis cache");
 			rc = new RedisCacheProxy(cache);
 		}

@@ -190,10 +190,11 @@ public class RedisCache extends CacheSupport implements Command {
 
 		Redis conn = getConnection();
 		try {
-			conn.call("SET", bkey, Coder.serialize(val));
-
 			if (exp > 0) {
-				conn.call("EXPIRE", bkey, Integer.toString(exp));
+				conn.pipeline().call("SET", bkey, Coder.serialize(val)).call("EXPIRE", bkey, Integer.toString(exp)).read();
+			}
+			else {
+				conn.call("SET", bkey, Coder.serialize(val));
 			}
 		}
 		catch (IOException ioe) {
