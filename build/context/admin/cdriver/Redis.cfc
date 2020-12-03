@@ -57,6 +57,13 @@ component extends="Cache" {
 			description = "Timeout in milliseconds for connections that are idling.",
 			type = "text"
 		)
+		,field(displayName = "Database index",
+			name = "databaseIndex",
+			defaultValue = -1,
+			required = false,
+			description = "Define a specific Database index.",
+			type = "text"
+		)
 	];
 
 	public string function getClass() {

@@ -42,6 +42,7 @@ public class RedisCache extends CacheSupport implements Command {
 	private int defaultExpire;
 
 	private boolean debug;
+	private int databaseIndex;
 
 	private GenericObjectPool<Redis> pool;
 
@@ -78,8 +79,9 @@ public class RedisCache extends CacheSupport implements Command {
 		defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
 
 		debug = caster.toBooleanValue(arguments.get("debug", null), false);
+		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
 
-		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, timeout, debug), getPoolConfig(arguments));
+		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, timeout, databaseIndex, debug), getPoolConfig(arguments));
 
 		if (async) {
 			storage = new Storage(this);
