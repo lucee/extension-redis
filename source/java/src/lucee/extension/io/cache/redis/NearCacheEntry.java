@@ -15,12 +15,14 @@ public class NearCacheEntry implements CacheEntry {
 	private int exp;
 	private long created;
 	private byte[] serialized;
+	private long count;
 
-	public NearCacheEntry(byte[] key, Object val, int exp) {
+	public NearCacheEntry(byte[] key, Object val, int exp, long count) {
 		this.key = key;
 		this.val = val;
 		this.exp = exp;
 		this.created = System.currentTimeMillis();
+		this.count = count;
 	}
 
 	@Override
@@ -101,5 +103,9 @@ public class NearCacheEntry implements CacheEntry {
 
 	public int getExpires() {
 		return exp;
+	}
+
+	public long count() {
+		return count;
 	}
 }

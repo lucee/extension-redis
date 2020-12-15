@@ -28,6 +28,9 @@ import lucee.runtime.type.Struct;
 import lucee.runtime.util.Cast;
 
 public class RedisCache extends CacheSupport implements Command {
+
+	private static long counter = Long.MIN_VALUE;
+
 	protected final Object TOKEN = new Object();
 
 	protected CFMLEngine engine = CFMLEngineFactory.getInstance();
@@ -52,7 +55,7 @@ public class RedisCache extends CacheSupport implements Command {
 	private String username;
 	private boolean async = true;
 
-	private Storage storage;
+	private Storage storage = new Storage(this);
 
 	public static void init(Config config, String[] cacheName, Struct[] arguments) {
 		// Not used at the moment
@@ -84,7 +87,7 @@ public class RedisCache extends CacheSupport implements Command {
 		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, timeout, databaseIndex, debug), getPoolConfig(arguments));
 
 		if (async) {
-			storage = new Storage(this);
+			// storage = new Storage(this);
 			storage.start();
 		}
 	}
@@ -114,13 +117,14 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public CacheEntry getCacheEntry(String skey) throws IOException {
+		long cnt = counter();
 		byte[] bkey = Coder.toKey(skey);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
 				return val;
 			}
-			storage.doJoin();
+			storage.doJoin(cnt);
 		}
 		Redis conn = getConnection();
 		try {
@@ -167,6 +171,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public void put(String key, Object val, Long idle, Long live) throws IOException {
+		long cnt = counter();
 		// expires
 		int exp;
 		if (live != null && live.longValue() > 0) {
@@ -183,7 +188,7 @@ public class RedisCache extends CacheSupport implements Command {
 		byte[] bkey = Coder.toKey(key);
 
 		if (async) {
-			storage.put(bkey, val, exp);
+			storage.put(bkey, val, exp, cnt);
 		}
 		else put(bkey, val, exp);
 	}
@@ -232,7 +237,8 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public boolean remove(String key) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
+
 		Redis conn = getConnection();
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
@@ -249,7 +255,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	public boolean remove(String[] keys) throws IOException {
 		if (keys == null || keys.length == 0) return false;
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
@@ -266,7 +272,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public int remove(CacheKeyFilter filter) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
@@ -287,7 +293,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public List<String> keys() throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return toList((List<byte[]>) conn.call("KEYS", "*"));
@@ -308,7 +314,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public List<String> keys(CacheKeyFilter filter) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return _skeys(conn, filter);
@@ -362,7 +368,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public List<CacheEntry> entries(CacheKeyFilter filter) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 
 		Redis conn = getConnection();
 		try {
@@ -417,7 +423,7 @@ public class RedisCache extends CacheSupport implements Command {
 	// a generic type at all here, just to be sure
 	@Override
 	public List values(CacheKeyFilter filter) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			List<byte[]> lkeys = _bkeys(conn, filter);
@@ -453,7 +459,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public Struct getCustomInfo() throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
@@ -499,7 +505,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public int clear() throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
@@ -566,7 +572,8 @@ public class RedisCache extends CacheSupport implements Command {
 		private ConcurrentLinkedDeque<NearCacheEntry> entries;
 		private RedisCache cache;
 		private CFMLEngine engine;
-		private long current = Long.MAX_VALUE;
+		private long current = Long.MIN_VALUE;
+		private final Object token = new Object();
 
 		public Storage(RedisCache cache) {
 			this.engine = CFMLEngineFactory.getInstance();
@@ -589,40 +596,35 @@ public class RedisCache extends CacheSupport implements Command {
 			return current;
 		}
 
-		public void doJoin() {
+		public void doJoin(long count) {
+			// print.e("join:" + count);
 			// wait until it is done, but not to long in case of a constant stream
-			long start = System.currentTimeMillis();
-			NearCacheEntry entry;
 			int max = 1000;
 
-			while ((entry = entries.peek()) != null) {
-				if (--max <= 0) break;
-				if (entry.createdTime() > start) break;
-				synchronized (this) {
-					try {
-						this.sleep(1);
-					}
-					catch (Exception e) {}
-				}
-			}
-			if (getCurrent() <= start) {
+			if (entries.isEmpty()) return;
+
+			// if we have entries, we wait until there are no entries anymore or they are newer than the request
+			if (getCurrent() <= count) {
 				while (true) {
 					if (--max <= 0) break;
-					if (getCurrent() > start) break;
-					synchronized (this) {
+					if (getCurrent() > count || entries.isEmpty()) break;
+					synchronized (token) {
 						try {
-							this.sleep(1);
+							token.wait(1);
 						}
-						catch (Exception e) {}
+						catch (Exception e) {
+							break;
+						}
 					}
 				}
 			}
 		}
 
-		public void put(byte[] bkey, Object val, int exp) {
-			entries.add(new NearCacheEntry(bkey, val, exp));
-			synchronized (this) {
-				this.notify();
+		public void put(byte[] bkey, Object val, int exp, long count) {
+			// print.e("put:" + count);
+			entries.add(new NearCacheEntry(bkey, val, exp, count));
+			synchronized (token) {
+				token.notifyAll();
 			}
 		}
 
@@ -632,22 +634,27 @@ public class RedisCache extends CacheSupport implements Command {
 				NearCacheEntry entry;
 				try {
 
-					// TODO engine.public boolean isRunning()
+					// print.e("- run:start:" + System.currentTimeMillis());
 					while ((entry = entries.poll()) != null) {
-						current = entry.createdTime();
+						current = entry.count();
 						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
-						current = Long.MAX_VALUE;
+						// print.e("curr:" + current);
 					}
-					synchronized (this) {
-						this.wait();
+					// print.e("- run:done:" + System.currentTimeMillis());
+					synchronized (token) {
+						// print.e("- wait");
+						token.wait();
 					}
 				}
-				catch (Exception e) {
+				catch (Throwable e) {
 					synchronized (this) {
 						try {
-							this.sleep(1000); // slow down in case of an issue
+							// print.e("- wait!!!");
+							this.wait(1000); // slow down in case of an issue
 						}
-						catch (InterruptedException ie) {}
+						catch (Exception ie) {
+							ie.printStackTrace();
+						}
 					}
 				}
 			}
@@ -664,7 +671,7 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	public Object command(String... arguments) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return conn.call(Coder.toBytesArrays(arguments));
@@ -681,7 +688,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public Object command(byte[][] arguments) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			return conn.call(arguments);
@@ -698,7 +705,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public List<Object> command(List<byte[][]> arguments) throws IOException {
-		if (async) storage.doJoin();
+		if (async) storage.doJoin(counter());
 		Redis conn = getConnection();
 		try {
 			Pipeline pl = conn.pipeline();
@@ -715,5 +722,9 @@ public class RedisCache extends CacheSupport implements Command {
 		finally {
 			if (conn != null) pool.returnObject(conn);
 		}
+	}
+
+	public static synchronized long counter() {
+		return ++counter;
 	}
 }
