@@ -6,17 +6,13 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.HashMap;
 
-import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
-import lucee.runtime.exp.PageException;
 
 public class Coder {
 
-	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5, 115, 114 };
+	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5 };
 
 	public static final Charset UTF8 = Charset.forName("UTF-8");
 
@@ -58,7 +54,6 @@ public class Coder {
 
 	public static Object evaluate(ClassLoader cl, byte[] data) throws IOException {
 		if (data == null) return null;
-
 		if (!isObjectStream(data)) return toString(data);
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(data);
@@ -89,35 +84,6 @@ public class Coder {
 		return true;
 	}
 
-	private static Object evaluateLegacy(String val) throws IOException {
-		try {
-			// number
-			if (val.startsWith("nbr(") && val.endsWith(")")) {
-				// System.err.println("nbr:" + val + ":" + func.getClass().getName());
-				return CFMLEngineFactory.getInstance().getCastUtil().toDouble(val.substring(4, val.length() - 1));
-			}
-			// boolean
-			else if (val.startsWith("bool(") && val.endsWith(")")) {
-				// System.err.println("bool:" + val + ":" + func.getClass().getName());
-				return CFMLEngineFactory.getInstance().getCastUtil().toBoolean(val.substring(5, val.length() - 1));
-			}
-			// date
-			else if (val.startsWith("date(") && val.endsWith(")")) {
-				CFMLEngine e = CFMLEngineFactory.getInstance();
-				return e.getCreationUtil().createDate(e.getCastUtil().toLongValue(val.substring(5, val.length() - 1)));
-			}
-			// eval
-			else if (val.startsWith("eval(") && val.endsWith(")")) {
-				// System.err.println("eval:" + val + ":" + func.getClass().getName());
-				return Functions.evaluate(val.substring(5, val.length() - 1));
-			}
-		}
-		catch (PageException pe) {
-			CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(pe);
-		}
-		return val;
-	}
-
 	public static byte[] serialize(Object value) throws IOException {
 		if (value instanceof CharSequence) return toBytes(value.toString());
 		// if (value instanceof Number) return toBytes(value.toString());
@@ -130,11 +96,30 @@ public class Coder {
 		return os.toByteArray();
 	}
 
-	public static void main(String[] args) throws IOException {
-		ClassLoader cl = Coder.class.getClassLoader();
-		print.e(evaluate(cl, serialize("abc")));
-		print.e(evaluate(cl, serialize(new ArrayList<>())));
-		print.e(evaluate(cl, serialize(new HashMap<>())));
-	}
+	/*
+	 * private static Object evaluateLegacy(String val) throws IOException { try { // number if
+	 * (val.startsWith("nbr(") && val.endsWith(")")) { // System.err.println("nbr:" + val + ":" +
+	 * func.getClass().getName()); return
+	 * CFMLEngineFactory.getInstance().getCastUtil().toDouble(val.substring(4, val.length() - 1)); } //
+	 * boolean else if (val.startsWith("bool(") && val.endsWith(")")) { // System.err.println("bool:" +
+	 * val + ":" + func.getClass().getName()); return
+	 * CFMLEngineFactory.getInstance().getCastUtil().toBoolean(val.substring(5, val.length() - 1)); } //
+	 * date else if (val.startsWith("date(") && val.endsWith(")")) { CFMLEngine e =
+	 * CFMLEngineFactory.getInstance(); return
+	 * e.getCreationUtil().createDate(e.getCastUtil().toLongValue(val.substring(5, val.length() - 1)));
+	 * } // eval else if (val.startsWith("eval(") && val.endsWith(")")) { // System.err.println("eval:"
+	 * + val + ":" + func.getClass().getName()); return Functions.evaluate(val.substring(5, val.length()
+	 * - 1)); } } catch (PageException pe) {
+	 * CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(pe); } return val; }
+	 */
+
+	/*
+	 * public static void main(String[] args) throws IOException { ClassLoader cl =
+	 * Coder.class.getClassLoader(); Object res = evaluate(cl, serialize("abc".getBytes()));
+	 * print.e(res.getClass().getName()); print.e(res);
+	 * 
+	 * print.e(evaluate(cl, serialize("abc"))); print.e(evaluate(cl, serialize(new ArrayList<>())));
+	 * print.e(evaluate(cl, serialize(new HashMap<>()))); }
+	 */
 
 }
