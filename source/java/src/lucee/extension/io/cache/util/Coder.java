@@ -86,7 +86,7 @@ public class Coder {
 
 	public static byte[] serialize(Object value) throws IOException {
 		if (value instanceof CharSequence) return toBytes(value.toString());
-		// if (value instanceof Number) return toBytes(value.toString());
+		if (value instanceof Number) return toBytes(value.toString());
 		// if (value instanceof Boolean) return toBytes(value.toString());
 
 		ByteArrayOutputStream os = new ByteArrayOutputStream(); // returns
