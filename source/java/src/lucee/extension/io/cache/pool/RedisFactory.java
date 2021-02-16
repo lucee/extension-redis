@@ -44,7 +44,6 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		if (databaseIndex > -1) {
 			redis.call("SELECT", String.valueOf(databaseIndex));
 		}
-
 		return redis;
 	}
 
@@ -57,9 +56,6 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		return new DefaultPooledObject<Redis>(redis);
 	}
 
-	/**
-	 * When an object is returned to the pool, clear the buffer.
-	 */
 	@Override
 	public void passivateObject(PooledObject<Redis> pooledObject) {
 		if (debug) System.out.println(">>>>> SocketFactory.passivateObject...");
@@ -73,20 +69,36 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 
 	@Override
 	public void destroyObject(PooledObject<Redis> p) throws Exception {
-		if (debug) {
-			System.out.println(">>>>> SocketFactory.destroyObject...");
-			System.out.println(">>>>> A isClosed: " + p.getObject().getSocket().isClosed());
-			System.out.println(">>>>> A isConnected: " + p.getObject().getSocket().isConnected());
+		Socket socket = p.getObject().getSocket();
+		if (socket != null) {
+			if (debug) {
+				System.out.println(">>>>> SocketFactory.destroyObject...");
+				System.out.println(">>>>> A isClosed: " + socket.isClosed());
+				System.out.println(">>>>> A isConnected: " + socket.isConnected());
+			}
+			socket.close();
 		}
-		super.destroyObject(p);
 	}
 
 	@Override
 	public boolean validateObject(PooledObject<Redis> p) {
 		if (debug) System.out.println(">>>>> SocketFactory.validateObject...");
-		boolean b = p.getObject().getSocket().isClosed();
-		if (debug) System.out.println(">>>>> socket isClosed: " + b);
-		return super.validateObject(p);
+		Socket socket = p.getObject().getSocket();
+		if (socket == null) return false;
+
+		if (!socket.isConnected()) {
+			if (debug) System.out.println(">>>>> A isConnected: false");
+			return false;
+		}
+		if (socket.isClosed()) {
+			if (debug) System.out.println(">>>>> A isClosed: true");
+			return false;
+		}
+		if (debug) {
+			System.out.println(">>>>> A isConnected: true");
+			System.out.println(">>>>> A isClosed: false");
+		}
+		return true;
 	}
 
 	@Override

@@ -1,6 +1,7 @@
 package lucee.extension.io.cache.redis;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
@@ -19,7 +20,6 @@ import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
 import lucee.extension.io.cache.util.Coder;
-import lucee.extension.io.cache.util.RedisUtil;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -141,12 +141,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -205,12 +205,12 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 		}
 		catch (IOException ioe) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw ioe;
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -226,12 +226,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return engine.getCastUtil().toBooleanValue(conn.call("EXISTS", bkey));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -244,12 +244,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -261,12 +261,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -282,12 +282,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return rtn.intValue();
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -299,12 +299,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return toList((List<byte[]>) conn.call("KEYS", "*"));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -320,12 +320,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return _skeys(conn, filter);
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -396,19 +396,20 @@ public class RedisCache extends CacheSupport implements Command {
 					try {
 						val = (byte[]) conn.call("GET", key);
 					}
-					catch (Exception jde) {}
+					catch (Exception jde) {
+					}
 					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length));
 				}
 			}
 			return list;
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -438,12 +439,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return list;
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -465,12 +466,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -513,12 +514,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return engine.getCastUtil().toIntValue(conn.call("DEL", bkeys), 0);
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -548,6 +549,32 @@ public class RedisCache extends CacheSupport implements Command {
 		return redis;
 	}
 
+	public void invalidateObjectEL(Redis conn) {
+		try {
+			if (conn != null) pool.invalidateObject(conn);
+		}
+		catch (Exception e) {
+		}
+	}
+
+	protected void releaseConnection(Redis conn) throws IOException {
+		if (conn == null) return;
+		try {
+			pool.returnObject(conn);
+		}
+		catch (Exception e) {
+			Socket socket = conn.getSocket();
+			if (socket != null) {
+				try {
+					socket.close();
+				}
+				catch (Exception ex) {
+				}
+			}
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
+	}
+
 	// CachePro interface @Override
 	public void verify() throws IOException {
 		Redis conn = getConnection();
@@ -558,12 +585,12 @@ public class RedisCache extends CacheSupport implements Command {
 			throw new CacheException("Could connect to Redis, but Redis did not answer to the ping as expected (response:" + res + ")");
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -677,12 +704,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return conn.call(Coder.toBytesArrays(arguments));
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -694,12 +721,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return conn.call(arguments);
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
@@ -715,12 +742,12 @@ public class RedisCache extends CacheSupport implements Command {
 			return pl.read();
 		}
 		catch (Exception e) {
-			RedisUtil.invalidateObjectEL(pool, conn);
+			invalidateObjectEL(conn);
 			conn = null;
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
-			if (conn != null) pool.returnObject(conn);
+			releaseConnection(conn);
 		}
 	}
 
