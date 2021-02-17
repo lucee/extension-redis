@@ -52,19 +52,28 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	 */
 	@Override
 	public PooledObject<Redis> wrap(Redis redis) {
-		if (debug) System.out.println(">>>>> SocketFactory.wrap...");
 		return new DefaultPooledObject<Redis>(redis);
 	}
 
 	@Override
-	public void passivateObject(PooledObject<Redis> pooledObject) {
-		if (debug) System.out.println(">>>>> SocketFactory.passivateObject...");
-	}
+	public boolean validateObject(PooledObject<Redis> p) {
+		Socket socket = p.getObject().getSocket();
+		if (socket == null) {
+			if (debug) System.out.println(">>>>> validateObject(socket null)");
+			return false;
+		}
 
-	@Override
-	public PooledObject<Redis> makeObject() throws Exception {
-		if (debug) System.out.println(">>>>> SocketFactory.makeObject...");
-		return super.makeObject();
+		if (!socket.isConnected()) {
+			if (debug) System.out.println(">>>>> validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+			return false;
+		}
+		if (socket.isClosed()) {
+			if (debug) System.out.println(">>>>> validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+			return false;
+		}
+		if (debug) System.out.println(">>>>> validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+
+		return true;
 	}
 
 	@Override
@@ -72,38 +81,9 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		Socket socket = p.getObject().getSocket();
 		if (socket != null) {
 			if (debug) {
-				System.out.println(">>>>> SocketFactory.destroyObject...");
-				System.out.println(">>>>> A isClosed: " + socket.isClosed());
-				System.out.println(">>>>> A isConnected: " + socket.isConnected());
+				System.out.println(">>>>> destroyObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
 			}
 			socket.close();
 		}
-	}
-
-	@Override
-	public boolean validateObject(PooledObject<Redis> p) {
-		if (debug) System.out.println(">>>>> SocketFactory.validateObject...");
-		Socket socket = p.getObject().getSocket();
-		if (socket == null) return false;
-
-		if (!socket.isConnected()) {
-			if (debug) System.out.println(">>>>> A isConnected: false");
-			return false;
-		}
-		if (socket.isClosed()) {
-			if (debug) System.out.println(">>>>> A isClosed: true");
-			return false;
-		}
-		if (debug) {
-			System.out.println(">>>>> A isConnected: true");
-			System.out.println(">>>>> A isClosed: false");
-		}
-		return true;
-	}
-
-	@Override
-	public void activateObject(PooledObject<Redis> p) throws Exception {
-		if (debug) System.out.println(">>>>> SocketFactory.activateObject...");
-		super.activateObject(p);
 	}
 }
