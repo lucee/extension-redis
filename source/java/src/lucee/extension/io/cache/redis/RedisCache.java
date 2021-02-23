@@ -214,7 +214,7 @@ public class RedisCache extends CacheSupport implements Command {
 				String msg = e.getMessage() + "";
 				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
 			}
-			if (val == null) throw new IOException("Cache key [" + skey + "] does not exists");
+			if (val == null) return defaultValue;
 
 			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
 		}
