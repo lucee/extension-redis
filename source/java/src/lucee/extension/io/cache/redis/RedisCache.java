@@ -188,12 +188,46 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	@Override
-	public CacheEntry getCacheEntry(String key, CacheEntry defaultValue) {
-		try {
-			return getCacheEntry(key);
+	public CacheEntry getCacheEntry(String skey, CacheEntry defaultValue) {
+		long cnt = counter();
+		byte[] bkey = Coder.toKey(skey);
+		if (async) {
+			NearCacheEntry val = storage.get(bkey);
+			if (val != null) {
+				return val;
+			}
+			storage.doJoin(cnt);
 		}
-		catch (IOException e) {
+		Redis conn;
+		try {
+			conn = getConnection();
+		}
+		catch (IOException e1) {
 			return defaultValue;
+		}
+		try {
+			byte[] val = null;
+			try {
+				val = (byte[]) conn.call("GET", bkey);
+			}
+			catch (Exception e) {
+				String msg = e.getMessage() + "";
+				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
+			}
+			if (val == null) throw new IOException("Cache key [" + skey + "] does not exists");
+
+			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			return defaultValue;
+		}
+		catch (Exception e) {
+			return defaultValue;
+		}
+		finally {
+			releaseConnectionEL(conn);
 		}
 	}
 
@@ -591,8 +625,6 @@ public class RedisCache extends CacheSupport implements Command {
 				Thread.sleep(100);
 			}
 			catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
 			}
 		}
 
@@ -636,6 +668,23 @@ public class RedisCache extends CacheSupport implements Command {
 				}
 			}
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
+	}
+
+	protected void releaseConnectionEL(Redis conn) {
+		if (conn == null) return;
+		try {
+			pool.returnObject(conn);
+		}
+		catch (Exception e) {
+			Socket socket = conn.getSocket();
+			if (socket != null) {
+				try {
+					socket.close();
+				}
+				catch (Exception ex) {
+				}
+			}
 		}
 	}
 
