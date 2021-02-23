@@ -2,6 +2,7 @@ package lucee.extension.io.cache.redis;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
@@ -37,7 +38,9 @@ public class RedisCache extends CacheSupport implements Command {
 	protected CFMLEngine engine = CFMLEngineFactory.getInstance();
 	protected Cast caster = engine.getCastUtil();
 
-	protected int timeout;
+	protected int socketTimeout;
+	protected long liveTimeout;
+	protected long idleTimeout;
 	protected String password;
 
 	private ClassLoader cl;
@@ -73,7 +76,12 @@ public class RedisCache extends CacheSupport implements Command {
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
 
-		timeout = caster.toIntValue(arguments.get("timeout", null), 2000);
+		socketTimeout = caster.toIntValue(arguments.get("timeout", null), -1);
+		if (socketTimeout == -1) socketTimeout = caster.toIntValue(arguments.get("socketTimeout", null), 2000);
+
+		liveTimeout = caster.toLongValue(arguments.get("liveTimeout", null), 3600000L);
+		idleTimeout = caster.toLongValue(arguments.get("idleTimeout", null), -1L);
+
 		username = caster.toString(arguments.get("username", null), null);
 		if (Util.isEmpty(username)) username = null;
 
@@ -85,7 +93,21 @@ public class RedisCache extends CacheSupport implements Command {
 		debug = caster.toBooleanValue(arguments.get("debug", null), false);
 		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
 
-		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, timeout, databaseIndex, debug), getPoolConfig(arguments));
+		if (debug) {
+			System.out.println(">>>>>>>>>>>>>>>> CONFIGURATION >>>>>>>>>>>>>>>>>>");
+			System.out.println("- host:" + host);
+			System.out.println("- port:" + port);
+			System.out.println("- socketTimeout:" + socketTimeout);
+			System.out.println("- liveTimeout:" + liveTimeout);
+			System.out.println("- idleTimeout:" + idleTimeout);
+			System.out.println("- username:" + username);
+			System.out.println("- password:" + password);
+			System.out.println("- timeToLiveSeconds:" + defaultExpire);
+			System.out.println("- databaseIndex:" + databaseIndex);
+		}
+
+		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, debug),
+				getPoolConfig(arguments));
 
 		if (async) {
 			// storage = new Storage(this);
@@ -142,6 +164,11 @@ public class RedisCache extends CacheSupport implements Command {
 			if (val == null) throw new IOException("Cache key [" + skey + "] does not exists");
 
 			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -205,6 +232,11 @@ public class RedisCache extends CacheSupport implements Command {
 				conn.call("SET", bkey, Coder.serialize(val));
 			}
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (IOException ioe) {
 			throw ioe;
 		}
@@ -224,6 +256,11 @@ public class RedisCache extends CacheSupport implements Command {
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("EXISTS", bkey));
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -240,6 +277,11 @@ public class RedisCache extends CacheSupport implements Command {
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -254,6 +296,11 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -274,6 +321,11 @@ public class RedisCache extends CacheSupport implements Command {
 			if (rtn == null) return 0;
 			return rtn.intValue();
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -288,6 +340,11 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			return toList((List<byte[]>) conn.call("KEYS", "*"));
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -307,6 +364,11 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			return _skeys(conn, filter);
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -390,6 +452,11 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 			return list;
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -423,6 +490,11 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 			return list;
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -447,6 +519,11 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			return InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -493,6 +570,11 @@ public class RedisCache extends CacheSupport implements Command {
 			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
 			if (bkeys == null || bkeys.size() == 0) return 0;
 			return engine.getCastUtil().toIntValue(conn.call("DEL", bkeys), 0);
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -565,6 +647,11 @@ public class RedisCache extends CacheSupport implements Command {
 			if ("PONG".equals(res)) return;
 
 			throw new CacheException("Could connect to Redis, but Redis did not answer to the ping as expected (response:" + res + ")");
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -683,6 +770,11 @@ public class RedisCache extends CacheSupport implements Command {
 		try {
 			return conn.call(Coder.toBytesArrays(arguments));
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
@@ -697,6 +789,11 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			return conn.call(arguments);
+		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
 		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
@@ -717,11 +814,24 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 			return pl.read();
 		}
+		catch (SocketException se) {
+			invalidateConnection(conn);
+			conn = null;
+			throw se;
+		}
 		catch (Exception e) {
 			throw engine.getExceptionUtil().toIOException(e);
 		}
 		finally {
 			releaseConnection(conn);
+		}
+	}
+
+	public void invalidateConnection(Redis conn) {
+		try {
+			if (conn != null) pool.invalidateObject(conn);
+		}
+		catch (Exception e) {
 		}
 	}
 

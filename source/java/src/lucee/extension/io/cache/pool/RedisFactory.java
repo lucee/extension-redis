@@ -18,16 +18,22 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	private final String username;
 	private final String password;
 	private final int databaseIndex;
-	private int socketTimeout;
+	private final int socketTimeout;
+	private final long idleTimeout;
+	private final long liveTimeout;
 
-	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, int socketTimeout, int databaseIndex, boolean debug) {
+	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, int socketTimeout, long idleTimeout, long liveTimeout, int databaseIndex,
+			boolean debug) {
 		this.cl = cl;
 		this.username = Util.isEmpty(username) ? null : username;
 		this.password = Util.isEmpty(password) ? null : password;
 		serverInfo = new InetSocketAddress(host, port);
 		this.socketTimeout = socketTimeout;
+		this.idleTimeout = idleTimeout;
+		this.liveTimeout = liveTimeout;
 		this.debug = debug;
 		this.databaseIndex = databaseIndex;
+
 	}
 
 	@Override
@@ -57,7 +63,20 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 
 	@Override
 	public boolean validateObject(PooledObject<Redis> p) {
-		Socket socket = p.getObject().getSocket();
+		Redis redis = p.getObject();
+		// check timeout
+		long now = System.currentTimeMillis();
+		if (liveTimeout > 0 && redis.created + liveTimeout < now) {
+			if (debug) System.out.println(">>>>> validateObject(reached live timeout:" + liveTimeout + ")");
+			return false;
+		}
+		if (idleTimeout > 0 && redis.lastUsed + idleTimeout < now) {
+			if (debug) System.out.println(">>>>> validateObject(reached idle timeout:" + idleTimeout + ")");
+			return false;
+		}
+
+		// check socket
+		Socket socket = redis.getSocket();
 		if (socket == null) {
 			if (debug) System.out.println(">>>>> validateObject(socket null)");
 			return false;
@@ -74,6 +93,15 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		if (debug) System.out.println(">>>>> validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
 
 		return true;
+	}
+
+	@Override
+	public void passivateObject(PooledObject<Redis> p) throws Exception {
+		if (debug) {
+			System.out.println(">>>>> passivateObject");
+		}
+		p.getObject().lastUsed = System.currentTimeMillis();
+		super.passivateObject(p);
 	}
 
 	@Override

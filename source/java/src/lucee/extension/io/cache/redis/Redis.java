@@ -276,6 +276,10 @@ public class Redis {
 
 	protected final ClassLoader cl;
 
+	public final long created;
+
+	public long lastUsed;
+
 	/**
 	 * Construct the connection with the specified Socket as the server connection with default buffer
 	 * sizes.
@@ -301,7 +305,7 @@ public class Redis {
 		this.socket = socket;
 		this.reader = new Parser(cl, new BufferedInputStream(socket.getInputStream(), inputBufferSize));
 		this.writer = new Encoder(new BufferedOutputStream(socket.getOutputStream(), outputBufferSize));
-
+		this.lastUsed = this.created = System.currentTimeMillis();
 	}
 
 	public Socket getSocket() {
