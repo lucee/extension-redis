@@ -133,7 +133,7 @@ public class RedisCache extends CacheSupport implements Command {
 		config.setNumTestsPerEvictionRun(caster.toIntValue(arguments.get("numTestsPerEvictionRun", null), GenericObjectPoolConfig.DEFAULT_NUM_TESTS_PER_EVICTION_RUN));
 		config.setSoftMinEvictableIdleTimeMillis(
 				caster.toLongValue(arguments.get("softMinEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
-		config.setTestOnBorrow(caster.toBooleanValue(arguments.get("testOnBorrow", null), GenericObjectPoolConfig.DEFAULT_TEST_ON_BORROW));
+		config.setTestOnBorrow(caster.toBooleanValue(arguments.get("testOnBorrow", null), true));
 		config.setTestOnCreate(caster.toBooleanValue(arguments.get("testOnCreate", null), GenericObjectPoolConfig.DEFAULT_TEST_ON_CREATE));
 		config.setTestOnReturn(caster.toBooleanValue(arguments.get("testOnReturn", null), GenericObjectPoolConfig.DEFAULT_TEST_ON_RETURN));
 		config.setTestWhileIdle(caster.toBooleanValue(arguments.get("testWhileIdle", null), GenericObjectPoolConfig.DEFAULT_TEST_WHILE_IDLE));
@@ -625,6 +625,7 @@ public class RedisCache extends CacheSupport implements Command {
 				Thread.sleep(100);
 			}
 			catch (InterruptedException e) {
+				if (debug) e.printStackTrace();
 			}
 		}
 
@@ -634,7 +635,6 @@ public class RedisCache extends CacheSupport implements Command {
 			System.out.println("SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
 		}
 
-		if (debug) System.out.println(">>>>> borrowObject start");
 		Redis redis;
 		try {
 			redis = pool.borrowObject();
@@ -642,7 +642,6 @@ public class RedisCache extends CacheSupport implements Command {
 		catch (Exception e) {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
-		if (debug) System.out.println(">>>>> borrowObject end");
 
 		if (debug) {
 			int actives = pool.getNumActive();
@@ -659,12 +658,14 @@ public class RedisCache extends CacheSupport implements Command {
 			pool.returnObject(conn);
 		}
 		catch (Exception e) {
+			if (debug) e.printStackTrace();
 			Socket socket = conn.getSocket();
 			if (socket != null) {
 				try {
 					socket.close();
 				}
 				catch (Exception ex) {
+					if (debug) ex.printStackTrace();
 				}
 			}
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
@@ -677,12 +678,14 @@ public class RedisCache extends CacheSupport implements Command {
 			pool.returnObject(conn);
 		}
 		catch (Exception e) {
+			if (debug) e.printStackTrace();
 			Socket socket = conn.getSocket();
 			if (socket != null) {
 				try {
 					socket.close();
 				}
 				catch (Exception ex) {
+					if (debug) ex.printStackTrace();
 				}
 			}
 		}
