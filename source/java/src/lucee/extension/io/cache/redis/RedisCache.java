@@ -129,7 +129,7 @@ public class RedisCache extends CacheSupport implements Command {
 		config.setMinEvictableIdleTimeMillis(caster.toLongValue(arguments.get("minEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
 		config.setTimeBetweenEvictionRunsMillis(
 				caster.toLongValue(arguments.get("timeBetweenEvictionRunsMillis", null), GenericObjectPoolConfig.DEFAULT_TIME_BETWEEN_EVICTION_RUNS_MILLIS));
-		config.setMinIdle(caster.toIntValue(arguments.get("minIdle", null), GenericObjectPoolConfig.DEFAULT_MIN_IDLE));
+		config.setMinIdle(caster.toIntValue(arguments.get("minIdle", null), 8));
 		config.setNumTestsPerEvictionRun(caster.toIntValue(arguments.get("numTestsPerEvictionRun", null), GenericObjectPoolConfig.DEFAULT_NUM_TESTS_PER_EVICTION_RUN));
 		config.setSoftMinEvictableIdleTimeMillis(
 				caster.toLongValue(arguments.get("softMinEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
