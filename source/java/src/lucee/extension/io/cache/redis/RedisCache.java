@@ -133,10 +133,18 @@ public class RedisCache extends CacheSupport implements Command {
 		config.setNumTestsPerEvictionRun(caster.toIntValue(arguments.get("numTestsPerEvictionRun", null), GenericObjectPoolConfig.DEFAULT_NUM_TESTS_PER_EVICTION_RUN));
 		config.setSoftMinEvictableIdleTimeMillis(
 				caster.toLongValue(arguments.get("softMinEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
-		config.setTestOnBorrow(caster.toBooleanValue(arguments.get("testOnBorrow", null), true));
-		config.setTestOnCreate(caster.toBooleanValue(arguments.get("testOnCreate", null), GenericObjectPoolConfig.DEFAULT_TEST_ON_CREATE));
-		config.setTestOnReturn(caster.toBooleanValue(arguments.get("testOnReturn", null), GenericObjectPoolConfig.DEFAULT_TEST_ON_RETURN));
-		config.setTestWhileIdle(caster.toBooleanValue(arguments.get("testWhileIdle", null), GenericObjectPoolConfig.DEFAULT_TEST_WHILE_IDLE));
+
+		config.setTestOnCreate(false);
+		config.setTestOnBorrow(true);
+		config.setTestOnReturn(false);
+		config.setTestWhileIdle(true);
+		// config.setTestOnBorrow(caster.toBooleanValue(arguments.get("testOnBorrow", null), true));
+		// config.setTestOnCreate(caster.toBooleanValue(arguments.get("testOnCreate", null),
+		// GenericObjectPoolConfig.DEFAULT_TEST_ON_CREATE));
+		// config.setTestOnReturn(caster.toBooleanValue(arguments.get("testOnReturn", null),
+		// GenericObjectPoolConfig.DEFAULT_TEST_ON_RETURN));
+		// config.setTestWhileIdle(caster.toBooleanValue(arguments.get("testWhileIdle", null),
+		// GenericObjectPoolConfig.DEFAULT_TEST_WHILE_IDLE));
 		return config;
 	}
 
