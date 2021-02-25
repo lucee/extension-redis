@@ -5,7 +5,6 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -18,6 +17,7 @@ import lucee.commons.io.cache.Cache;
 import lucee.commons.io.cache.CacheEntry;
 import lucee.commons.io.cache.CacheKeyFilter;
 import lucee.commons.io.cache.exp.CacheException;
+import lucee.commons.io.log.Log;
 import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
@@ -48,7 +48,6 @@ public class RedisCache extends CacheSupport implements Command {
 	// config pool
 	private int defaultExpire;
 
-	private boolean debug;
 	private int databaseIndex;
 
 	private GenericObjectPool<Redis> pool;
@@ -61,17 +60,24 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private Storage storage = new Storage(this);
 
+	private Log log;
+
 	public static void init(Config config, String[] cacheName, Struct[] arguments) {
 		// Not used at the moment
 	}
 
 	@Override
 	public void init(Config config, String cacheName, Struct arguments) throws IOException {
-		init(arguments);
+		init(config, arguments);
 	}
 
 	public void init(Struct arguments) throws IOException {
+		init(null, arguments);
+	}
+
+	public void init(Config config, Struct arguments) throws IOException {
 		this.cl = arguments.getClass().getClassLoader();
+		if (config == null) config = CFMLEngineFactory.getInstance().getThreadConfig();
 
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
@@ -90,23 +96,19 @@ public class RedisCache extends CacheSupport implements Command {
 
 		defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
 
-		debug = caster.toBooleanValue(arguments.get("debug", null), false);
 		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
-
-		if (debug) {
-			System.out.println(">>>>>>>>>>>>>>>> CONFIGURATION >>>>>>>>>>>>>>>>>>");
-			System.out.println("- host:" + host);
-			System.out.println("- port:" + port);
-			System.out.println("- socketTimeout:" + socketTimeout);
-			System.out.println("- liveTimeout:" + liveTimeout);
-			System.out.println("- idleTimeout:" + idleTimeout);
-			System.out.println("- username:" + username);
-			System.out.println("- password:" + password);
-			System.out.println("- timeToLiveSeconds:" + defaultExpire);
-			System.out.println("- databaseIndex:" + databaseIndex);
+		String logName = caster.toString(arguments.get("log", null), null);
+		if (!Util.isEmpty(logName, true) && config != null) {
+			logName = logName.trim();
+			this.log = config.getLog(logName);
 		}
 
-		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, debug),
+		if (log != null) {
+			log.debug("redis-cache", "configuration: host:" + host + ";port:" + port + ";socketTimeout:" + socketTimeout + ";liveTimeout:" + liveTimeout + ";idleTimeout:"
+					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";");
+		}
+
+		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
 				getPoolConfig(arguments));
 
 		if (async) {
@@ -117,6 +119,8 @@ public class RedisCache extends CacheSupport implements Command {
 
 	protected GenericObjectPoolConfig getPoolConfig(Struct arguments) throws IOException {
 		GenericObjectPoolConfig config = new GenericObjectPoolConfig();
+
+		// TODO log pool config
 
 		config.setBlockWhenExhausted(caster.toBooleanValue(arguments.get("blockWhenExhausted", null), BaseObjectPoolConfig.DEFAULT_BLOCK_WHEN_EXHAUSTED));
 		String evictionPolicyClassName = caster.toString(arguments.get("evictionPolicyClassName", null), null);
@@ -166,6 +170,7 @@ public class RedisCache extends CacheSupport implements Command {
 				val = (byte[]) conn.call("GET", bkey);
 			}
 			catch (Exception e) {
+				if (log != null) log.error("redis-cache", e);
 				String msg = e.getMessage() + "";
 				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
 			}
@@ -211,6 +216,7 @@ public class RedisCache extends CacheSupport implements Command {
 			conn = getConnection();
 		}
 		catch (IOException e1) {
+			if (log != null) log.error("redis-cache", e1);
 			return defaultValue;
 		}
 		try {
@@ -219,6 +225,7 @@ public class RedisCache extends CacheSupport implements Command {
 				val = (byte[]) conn.call("GET", bkey);
 			}
 			catch (Exception e) {
+				if (log != null) log.error("redis-cache", e);
 				String msg = e.getMessage() + "";
 				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
 			}
@@ -227,11 +234,13 @@ public class RedisCache extends CacheSupport implements Command {
 			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
 		}
 		catch (SocketException se) {
+			if (log != null) log.error("redis-cache", se);
 			invalidateConnection(conn);
 			conn = null;
 			return defaultValue;
 		}
 		catch (Exception e) {
+			if (log != null) log.error("redis-cache", e);
 			return defaultValue;
 		}
 		finally {
@@ -488,6 +497,7 @@ public class RedisCache extends CacheSupport implements Command {
 						val = (byte[]) conn.call("GET", key);
 					}
 					catch (Exception jde) {
+						if (log != null) log.error("redis-cache", jde);
 					}
 					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length));
 				}
@@ -628,19 +638,19 @@ public class RedisCache extends CacheSupport implements Command {
 
 	protected Redis getConnection() throws IOException {
 		while (pool == null) {
-			if (debug) System.out.println(new Date() + " waiting for the pool");
+			if (log != null) log.debug("redis-cache", "waiting for the pool");
 			try {
 				Thread.sleep(100);
 			}
 			catch (InterruptedException e) {
-				if (debug) e.printStackTrace();
+				if (log != null) log.error("redis-cache", e);
 			}
 		}
 
-		if (debug) {
+		if (log != null) {
 			int actives = pool.getNumActive();
 			int idle = pool.getNumIdle();
-			System.out.println("SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
+			log.debug("redis-cache", "SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
 		}
 
 		Redis redis;
@@ -651,10 +661,10 @@ public class RedisCache extends CacheSupport implements Command {
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 		}
 
-		if (debug) {
+		if (log != null) {
 			int actives = pool.getNumActive();
 			int idle = pool.getNumIdle();
-			System.out.println("SocketUtil.getConnection after now actives : " + actives + ", idle : " + idle);
+			log.debug("redis-cache", "SocketUtil.getConnection after now actives : " + actives + ", idle : " + idle);
 		}
 
 		return redis;
@@ -666,14 +676,14 @@ public class RedisCache extends CacheSupport implements Command {
 			pool.returnObject(conn);
 		}
 		catch (Exception e) {
-			if (debug) e.printStackTrace();
+			if (log != null) log.error("redis-cache", e);
 			Socket socket = conn.getSocket();
 			if (socket != null) {
 				try {
 					socket.close();
 				}
 				catch (Exception ex) {
-					if (debug) ex.printStackTrace();
+					if (log != null) log.error("redis-cache", ex);
 				}
 			}
 			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
@@ -686,14 +696,14 @@ public class RedisCache extends CacheSupport implements Command {
 			pool.returnObject(conn);
 		}
 		catch (Exception e) {
-			if (debug) e.printStackTrace();
+			if (log != null) log.error("redis-cache", e);
 			Socket socket = conn.getSocket();
 			if (socket != null) {
 				try {
 					socket.close();
 				}
 				catch (Exception ex) {
-					if (debug) ex.printStackTrace();
+					if (log != null) log.error("redis-cache", ex);
 				}
 			}
 		}
@@ -767,6 +777,7 @@ public class RedisCache extends CacheSupport implements Command {
 							token.wait(1);
 						}
 						catch (Exception e) {
+							if (cache.log != null) cache.log.error("redis-cache", e);
 							break;
 						}
 					}
@@ -801,13 +812,14 @@ public class RedisCache extends CacheSupport implements Command {
 					}
 				}
 				catch (Throwable e) {
+					if (cache.log != null) cache.log.error("redis-cache", e);
 					synchronized (this) {
 						try {
 							// print.e("- wait!!!");
 							this.wait(1000); // slow down in case of an issue
 						}
 						catch (Exception ie) {
-							ie.printStackTrace();
+							if (cache.log != null) cache.log.error("redis-cache", ie);
 						}
 					}
 				}
@@ -892,6 +904,7 @@ public class RedisCache extends CacheSupport implements Command {
 			if (conn != null) pool.invalidateObject(conn);
 		}
 		catch (Exception e) {
+			if (log != null) log.error("redis-cache", e);
 		}
 	}
 
