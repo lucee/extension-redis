@@ -14,7 +14,8 @@ import lucee.loader.util.Util;
 
 public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	private final ClassLoader cl;
-	private final InetSocketAddress serverInfo;
+	private final String host;
+	private final int port;
 	private final String username;
 	private final String password;
 	private final int databaseIndex;
@@ -28,7 +29,9 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		this.cl = cl;
 		this.username = Util.isEmpty(username) ? null : username;
 		this.password = Util.isEmpty(password) ? null : password;
-		serverInfo = new InetSocketAddress(host, port);
+		this.host = host;
+		this.port = port;
+
 		this.socketTimeout = socketTimeout;
 		this.idleTimeout = idleTimeout;
 		this.liveTimeout = liveTimeout;
@@ -39,11 +42,13 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 
 	@Override
 	public Redis create() throws IOException {
-		if (log != null) log.debug("redis-cache", "create connection to redis");
+		if (log != null) log.debug("redis-cache", "create connection to " + host + ":" + port);
 		Socket socket = new Socket();
+		InetSocketAddress serverInfo = new InetSocketAddress(host, port);
 		if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
 		else socket.connect(serverInfo);
 		Redis redis = new Redis(cl, socket);
+
 		if (password != null) {
 			if (username != null) redis.call("AUTH", username, password);
 			else redis.call("AUTH", password);
@@ -68,30 +73,30 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		// check timeout
 		long now = System.currentTimeMillis();
 		if (liveTimeout > 0 && redis.created + liveTimeout < now) {
-			if (log != null) log.debug("redis-cache", "validateObject(reached live timeout:" + liveTimeout + ")");
+			if (log != null) log.debug("redis-cache", "validateObject(reached live timeout:" + liveTimeout + ") " + host + ":" + port);
 			return false;
 		}
 		if (idleTimeout > 0 && redis.lastUsed + idleTimeout < now) {
-			if (log != null) log.debug("redis-cache", "validateObject(reached idle timeout:" + idleTimeout + ")");
+			if (log != null) log.debug("redis-cache", "validateObject(reached idle timeout:" + idleTimeout + ") " + host + ":" + port);
 			return false;
 		}
 
 		// check socket
 		Socket socket = redis.getSocket();
 		if (socket == null) {
-			if (log != null) log.debug("redis-cache", "validateObject(socket null)");
+			if (log != null) log.debug("redis-cache", "validateObject(socket null) " + host + ":" + port);
 			return false;
 		}
 
 		if (!socket.isConnected()) {
-			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
 			return false;
 		}
 		if (socket.isClosed()) {
-			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
 			return false;
 		}
-		if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+		if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
 
 		return true;
 	}
@@ -107,7 +112,7 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	public void destroyObject(PooledObject<Redis> p) throws Exception {
 		Socket socket = p.getObject().getSocket();
 		if (socket != null) {
-			if (log != null) log.debug("redis-cache", "destroyObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ")");
+			if (log != null) log.debug("redis-cache", "destroyObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
 			socket.close();
 		}
 	}
