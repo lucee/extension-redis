@@ -3,4 +3,5 @@ Export-Package: lucee.extension.io.cache.redis,
  lucee.extension.io.cache.redis.simple,
  lucee.extension.io.cache.redis.udf
 Bundle-ManifestVersion: 2
-Require-Bundle: org.apache.commons.commons-pool2;bundle-version=2.8.1
+Require-Bundle: org.apache.commons.commons-pool2;bundle-version=2.8.1,
+ org.mongodb.bson;bundle-version=4.2.3

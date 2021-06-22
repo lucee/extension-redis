@@ -924,4 +924,8 @@ public class RedisCache extends CacheSupport implements Command {
 	public static synchronized long counter() {
 		return ++counter;
 	}
+
+	public boolean isObjectSerialisationSupported() {
+		return true;
+	}
 }

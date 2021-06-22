@@ -7,6 +7,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.charset.Charset;
 
+import org.bson.BsonDocument;
+
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 
@@ -54,7 +56,13 @@ public class Coder {
 
 	public static Object evaluate(ClassLoader cl, byte[] data) throws IOException {
 		if (data == null) return null;
-		if (!isObjectStream(data)) return toString(data);
+		if (!isObjectStream(data)) {
+			BsonDocument doc = BSON.toBsonDocument(data, null);
+			if (doc != null) {
+				return BSON.toStruct(doc, CFMLEngineFactory.getInstance());
+			}
+			return toString(data);
+		}
 
 		ByteArrayInputStream bais = new ByteArrayInputStream(data);
 		ObjectInputStream ois = null;
@@ -85,9 +93,18 @@ public class Coder {
 	}
 
 	public static byte[] serialize(Object value) throws IOException {
-		if (value instanceof CharSequence) return toBytes(value.toString());
-		if (value instanceof Number) return toBytes(value.toString());
+		if (value instanceof CharSequence) {
+			return toBytes(value.toString());
+		}
+		if (value instanceof Number) {
+			return toBytes(value.toString());
+		}
 		// if (value instanceof Boolean) return toBytes(value.toString());
+
+		BsonDocument doc = BSON.toBsonDocument(value, false, null);
+		if (doc != null) {
+			return BSON.toBytes(doc);
+		}
 
 		ByteArrayOutputStream os = new ByteArrayOutputStream(); // returns
 		ObjectOutputStream oos = new ObjectOutputStream(os);
