@@ -15,12 +15,50 @@ component extends="Cache" {
 			type = "text"
 		)
 
-		,group("Authentication","Authentication Credentials if necessary.")
+		,group("Direct Authentication","Authentication Credentials")
+		,field(displayName = "Username",
+			name = "username",
+			defaultValue = "",
+			required = false,
+			description = "Username (if) necessary to connect.",
+			type = "text"
+		)
 		,field(displayName = "Password",
 			name = "password",
 			defaultValue = "",
 			required = false,
 			description = "Password (if) necessary to connect.",
+			type = "text"
+		)
+
+		,group("Authentication via AWS Secret Manager","You can get the authentication credentials from AWS Secret Manager")
+		,field(displayName = "Secret Name",
+			name = "secretName",
+			defaultValue = "",
+			required = false,
+			description = "Name of the secret within the AWS Secret Manager",
+			type = "text"
+		)
+		,field(displayName = "Region",
+			name = "region",
+			defaultValue = "",
+			required = false,
+			description = "A Region is a named set of AWS resources in the same geographical area. An example of a Region is us-east-1, which is the US East (N. Virginia) Region.",
+			type = "text"
+		)
+		,field(displayName = "AccessKeyId",
+			name = "accessKeyId",
+			defaultValue = "",
+			required = false,
+			description = "The accessKeyId is not necessary in case you wanna access a SecretManager within the current AWS EC2 instance. 
+			If the accessKeyId is not set and you are not within an EC2 instance, the secret manager client will look for the accessKeyId in the enviroment variables and system properties.",
+			type = "text"
+		)
+		,field(displayName = "SecretKey",
+			name = "secretKey",
+			defaultValue = "",
+			required = false,
+			description = "Corresponding secretKey for the accessKeyId, for more details see accessKeyId above.",
 			type = "text"
 		)
 
