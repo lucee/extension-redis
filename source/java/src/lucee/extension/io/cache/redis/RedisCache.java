@@ -21,6 +21,8 @@ import lucee.commons.io.log.Log;
 import lucee.extension.io.cache.pool.RedisFactory;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
+import lucee.extension.io.cache.redis.sm.SecretReciever;
+import lucee.extension.io.cache.redis.sm.SecretReciever.CredDat;
 import lucee.extension.io.cache.util.Coder;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
@@ -62,6 +64,12 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private Log log;
 
+	// secret manager
+	private String secretName;
+	private String region;
+	private String accessKeyId;
+	private String secretKey;
+
 	public RedisCache() {
 		if (async) {
 			// storage = new Storage(this);
@@ -101,6 +109,27 @@ public class RedisCache extends CacheSupport implements Command {
 		password = caster.toString(arguments.get("password", null), null);
 		if (Util.isEmpty(password)) password = null;
 
+		// secret manager
+		secretName = caster.toString(arguments.get("secretName", null), null);
+		if (Util.isEmpty(secretName)) secretName = caster.toString(arguments.get("awsSecretName", null), null);
+		if (Util.isEmpty(secretName)) secretName = null;
+		// we only care about the following values in case we have a secret name
+		if (secretName != null) {
+			region = caster.toString(arguments.get("region", null), null);
+			if (Util.isEmpty(region)) region = caster.toString(arguments.get("awsRegion", null), null);
+			if (Util.isEmpty(region)) region = null;
+
+			accessKeyId = caster.toString(arguments.get("accessKeyId", null), null);
+			if (Util.isEmpty(accessKeyId)) accessKeyId = caster.toString(arguments.get("awsAccessKeyId", null), null);
+			if (Util.isEmpty(accessKeyId)) accessKeyId = caster.toString(arguments.get("accessKey", null), null);
+			if (Util.isEmpty(accessKeyId)) accessKeyId = null;
+
+			secretKey = caster.toString(arguments.get("secretKey", null), null);
+			if (Util.isEmpty(secretKey)) secretKey = caster.toString(arguments.get("awsSecretKey", null), null);
+			if (Util.isEmpty(secretKey)) secretKey = caster.toString(arguments.get("secretKeyId", null), null);
+			if (Util.isEmpty(secretKey)) secretKey = null;
+		}
+
 		defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
 
 		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
@@ -115,7 +144,30 @@ public class RedisCache extends CacheSupport implements Command {
 					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";");
 		}
 
-		pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
+		if (username == null && secretName != null) {
+			CredDat cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, false, false);
+			pool = new GenericObjectPool<Redis>(
+					new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
+					getPoolConfig(arguments));
+
+			// validate a connection
+			Redis conn = null;
+			try {
+				conn = pool.borrowObject();
+			}
+			catch (Exception e) {
+				// in case the connection does not work, we force an update on the credentials loaded from SM
+				cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, true, true);
+				pool = new GenericObjectPool<Redis>(
+						new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
+						getPoolConfig(arguments));
+			}
+			finally {
+				releaseConnection(conn);
+			}
+
+		}
+		else pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
 				getPoolConfig(arguments));
 
 	}
@@ -928,4 +980,17 @@ public class RedisCache extends CacheSupport implements Command {
 	public boolean isObjectSerialisationSupported() {
 		return true;
 	}
+
+	private String choose(String v1, String v2) {
+		if (!Util.isEmpty(v1, true)) return v1.trim();
+		if (!Util.isEmpty(v2, true)) return v2.trim();
+		return null;
+	}
+
+	private int choose(int v1, int v2) {
+		if (v1 != 0) return v1;
+		if (v2 != 0) return v2;
+		return 0;
+	}
+
 }
