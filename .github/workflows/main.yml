@@ -23,7 +23,7 @@ jobs:
           # Maps port 6379 on service container to the host
           - 6379:6379
     env:
-      luceeVersion: 6.0.0.95-SNAPSHOT
+      luceeVersion: 6.0.0.114-SNAPSHOT
 
     steps:
     - uses: actions/checkout@v2
@@ -40,7 +40,7 @@ jobs:
     - name: Cache Lucee files
       uses: actions/cache@v2
       with:
-        path: _actions/zspitzer/lucee-script-engine-runner/main/lucee-download-cache
+        path: _actions/lucee/script-runner/main/lucee-download-cache
         key: lucee-downloads-${{ env.luceeVersion }}
         restore-keys: |
           lucee-downloads
@@ -57,7 +57,7 @@ jobs:
         repository: lucee/lucee
         path: lucee
     - name: Run Lucee Test Suite, labels="redis"
-      uses: zspitzer/lucee-script-engine-runner@main
+      uses: lucee/script-runner@main
       with:
         webroot: ${{ github.workspace }}/lucee/test
         execute: /bootstrap-tests.cfm
