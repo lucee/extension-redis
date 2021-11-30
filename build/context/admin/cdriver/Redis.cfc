@@ -4,7 +4,7 @@ component extends="Cache" {
 			name = "host",
 			defaultValue = "localhost",
 			required = true,
-			description = "Host name or ip address of the server you want to connect.",
+			description = "Host name or IP address of the server you want to connect to.",
 			type = "text"
 			)
 		,field(displayName = "Port",
@@ -50,8 +50,8 @@ component extends="Cache" {
 			name = "accessKeyId",
 			defaultValue = "",
 			required = false,
-			description = "The accessKeyId is not necessary in case you wanna access a SecretManager within the current AWS EC2 instance. 
-			If the accessKeyId is not set and you are not within an EC2 instance, the secret manager client will look for the accessKeyId in the enviroment variables and system properties.",
+			description = "The accessKeyId is not required if you wanna access a SecretManager on an AWS EC2 instance. 
+			If the accessKeyId is not set and you're not using an EC2 instance, the Secret Manager Client will look for the accessKeyId in the environment variables and system properties.",
 			type = "text"
 		)
 		,field(displayName = "SecretKey",
