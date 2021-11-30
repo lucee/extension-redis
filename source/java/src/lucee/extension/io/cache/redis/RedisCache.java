@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
-import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
 import lucee.commons.io.cache.Cache;
@@ -19,6 +18,10 @@ import lucee.commons.io.cache.CacheKeyFilter;
 import lucee.commons.io.cache.exp.CacheException;
 import lucee.commons.io.log.Log;
 import lucee.extension.io.cache.pool.RedisFactory;
+import lucee.extension.io.cache.pool.RedisPool;
+import lucee.extension.io.cache.pool.RedisPoolConfig;
+import lucee.extension.io.cache.pool.RedisPoolListener;
+import lucee.extension.io.cache.pool.RedisPoolListenerNotifyOnReturn;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
 import lucee.extension.io.cache.redis.sm.SecretReciever;
@@ -52,7 +55,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private int databaseIndex;
 
-	private GenericObjectPool<Redis> pool;
+	private RedisPool pool;
 
 	private String host;
 	private int port;
@@ -69,6 +72,9 @@ public class RedisCache extends CacheSupport implements Command {
 	private String region;
 	private String accessKeyId;
 	private String secretKey;
+	private boolean ssl;
+
+	private final Object token = new Object();
 
 	public RedisCache() {
 		if (async) {
@@ -109,6 +115,8 @@ public class RedisCache extends CacheSupport implements Command {
 		password = caster.toString(arguments.get("password", null), null);
 		if (Util.isEmpty(password)) password = null;
 
+		ssl = caster.toBooleanValue(arguments.get("ssl", null), false);
+
 		// secret manager
 		secretName = caster.toString(arguments.get("secretName", null), null);
 		if (Util.isEmpty(secretName)) secretName = caster.toString(arguments.get("awsSecretName", null), null);
@@ -144,11 +152,13 @@ public class RedisCache extends CacheSupport implements Command {
 					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";");
 		}
 
+		RedisPoolListener listener = new RedisPoolListenerNotifyOnReturn(token);
+
 		if (username == null && secretName != null) {
 			CredDat cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, false, false);
-			pool = new GenericObjectPool<Redis>(
-					new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
-					getPoolConfig(arguments));
+			pool = new RedisPool(
+					new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
+					getPoolConfig(arguments), listener);
 
 			// validate a connection
 			Redis conn = null;
@@ -158,22 +168,21 @@ public class RedisCache extends CacheSupport implements Command {
 			catch (Exception e) {
 				// in case the connection does not work, we force an update on the credentials loaded from SM
 				cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, true, true);
-				pool = new GenericObjectPool<Redis>(
-						new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
-						getPoolConfig(arguments));
+				pool = new RedisPool(new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout,
+						databaseIndex, log), getPoolConfig(arguments), listener);
 			}
 			finally {
 				releaseConnection(conn);
 			}
 
 		}
-		else pool = new GenericObjectPool<Redis>(new RedisFactory(cl, host, port, username, password, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
-				getPoolConfig(arguments));
+		else pool = new RedisPool(new RedisFactory(cl, host, port, username, password, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log), getPoolConfig(arguments),
+				listener);
 
 	}
 
-	protected GenericObjectPoolConfig getPoolConfig(Struct arguments) throws IOException {
-		GenericObjectPoolConfig config = new GenericObjectPoolConfig();
+	protected RedisPoolConfig getPoolConfig(Struct arguments) throws IOException {
+		RedisPoolConfig config = new RedisPoolConfig();
 
 		// TODO log pool config
 
@@ -183,7 +192,8 @@ public class RedisCache extends CacheSupport implements Command {
 		config.setFairness(caster.toBooleanValue(arguments.get("fairness", null), BaseObjectPoolConfig.DEFAULT_FAIRNESS));
 		config.setLifo(caster.toBooleanValue(arguments.get("lifo", null), BaseObjectPoolConfig.DEFAULT_LIFO));
 		config.setMaxIdle(caster.toIntValue(arguments.get("maxIdle", null), GenericObjectPoolConfig.DEFAULT_MAX_IDLE));
-		config.setMaxTotal(caster.toIntValue(arguments.get("maxTotal", null), GenericObjectPoolConfig.DEFAULT_MAX_TOTAL));
+		int maxTotal = caster.toIntValue(arguments.get("maxTotal", null), GenericObjectPoolConfig.DEFAULT_MAX_TOTAL);
+		config.setMaxTotal(maxTotal);
 		config.setMaxWaitMillis(caster.toLongValue(arguments.get("maxWaitMillis", null), GenericObjectPoolConfig.DEFAULT_MAX_WAIT_MILLIS));
 		config.setMinEvictableIdleTimeMillis(caster.toLongValue(arguments.get("minEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
 		config.setTimeBetweenEvictionRunsMillis(
@@ -192,6 +202,19 @@ public class RedisCache extends CacheSupport implements Command {
 		config.setNumTestsPerEvictionRun(caster.toIntValue(arguments.get("numTestsPerEvictionRun", null), GenericObjectPoolConfig.DEFAULT_NUM_TESTS_PER_EVICTION_RUN));
 		config.setSoftMinEvictableIdleTimeMillis(
 				caster.toLongValue(arguments.get("softMinEvictableIdleTimeMillis", null), GenericObjectPoolConfig.DEFAULT_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS));
+
+		Integer maxLowPrio = caster.toInteger(arguments.get("maxLowPriority", null), null);
+		if (maxLowPrio != null) {
+			if (maxLowPrio < 0) maxLowPrio = maxTotal + maxLowPrio;
+			if (maxLowPrio < 1) maxLowPrio = null;
+		}
+		if (maxLowPrio == null) {
+			maxLowPrio = maxTotal / 10;
+			if (maxLowPrio == 0) maxLowPrio = maxTotal - 1;
+			else maxLowPrio = maxTotal - maxLowPrio;
+		}
+
+		config.setMaxLowPriority(maxLowPrio);
 
 		config.setTestOnCreate(false);
 		config.setTestOnBorrow(true);
@@ -244,6 +267,50 @@ public class RedisCache extends CacheSupport implements Command {
 		finally {
 			releaseConnection(conn);
 		}
+	}
+
+	public Struct getPoolInfo() {
+		while (pool == null) {
+			if (log != null) log.debug("redis-cache", "waiting for the pool");
+			try {
+				Thread.sleep(100);
+			}
+			catch (InterruptedException e) {
+				if (log != null) log.error("redis-cache", e);
+			}
+		}
+		Struct data = engine.getCreationUtil().createStruct();
+
+		data.setEL("BorrowedCount", pool.getBorrowedCount());
+		data.setEL("BlockWhenExhausted", pool.getBlockWhenExhausted());
+		data.setEL("CreatedCount", pool.getCreatedCount());
+		data.setEL("DestroyedByBorrowValidationCount", pool.getDestroyedByBorrowValidationCount());
+		data.setEL("DestroyedByEvictorCount", pool.getDestroyedByEvictorCount());
+		data.setEL("DestroyedCount", pool.getDestroyedCount());
+		data.setEL("Fairness", pool.getFairness());
+		data.setEL("Lifo", pool.getLifo());
+		data.setEL("MaxBorrowWaitTimeMillis", pool.getMaxBorrowWaitTimeMillis());
+		data.setEL("MaxIdle", pool.getMaxIdle());
+		data.setEL("MaxTotal", pool.getMaxTotal());
+		data.setEL("MaxLowPrio", pool.getMaxLowPriority());
+		data.setEL("MaxWaitMillis", pool.getMaxWaitMillis());
+		data.setEL("MeanActiveTimeMillis", pool.getMeanActiveTimeMillis());
+		data.setEL("MeanBorrowWaitTimeMillis", pool.getMeanBorrowWaitTimeMillis());
+		data.setEL("MeanIdleTimeMillis", pool.getMeanIdleTimeMillis());
+		data.setEL("MinEvictableIdleTimeMillis", pool.getMinEvictableIdleTimeMillis());
+		data.setEL("MinIdle", pool.getMinIdle());
+		data.setEL("NumActive", pool.getNumActive());
+		data.setEL("NumIdle", pool.getNumIdle());
+		data.setEL("NumTestsPerEvictionRun", pool.getNumTestsPerEvictionRun());
+		data.setEL("NumWaiters", pool.getNumWaiters());
+		data.setEL("RemoveAbandonedOnBorrow", pool.getRemoveAbandonedOnBorrow());
+		data.setEL("RemoveAbandonedOnMaintenance", pool.getRemoveAbandonedOnMaintenance());
+		data.setEL("RemoveAbandonedTimeout", pool.getRemoveAbandonedTimeout());
+		data.setEL("ReturnedCount", pool.getReturnedCount());
+		data.setEL("SoftMinEvictableIdleTimeMillis", pool.getSoftMinEvictableIdleTimeMillis());
+		data.setEL("TimeBetweenEvictionRunsMillis", pool.getTimeBetweenEvictionRunsMillis());
+
+		return data;
 	}
 
 	DebugObject getDebugObject(Redis conn, byte[] bkey) throws IOException {
@@ -625,7 +692,10 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			return InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
+			byte[] barr = (byte[]) conn.call("INFO");
+			Struct data = barr == null ? engine.getCreationUtil().createStruct() : InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
+			data.set("connectionPool", getPoolInfo());
+			return data;
 		}
 		catch (SocketException se) {
 			invalidateConnection(conn);
@@ -692,6 +762,11 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	protected Redis getConnection() throws IOException {
+		return getConnection(false, 0);
+	}
+
+	protected Redis getConnection(boolean onlyIfSufficent, long timeout) throws IOException {
+		long start = timeout > 0 ? System.currentTimeMillis() : 0;
 		while (pool == null) {
 			if (log != null) log.debug("redis-cache", "waiting for the pool");
 			try {
@@ -703,17 +778,48 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 
 		if (log != null) {
-			int actives = pool.getNumActive();
-			int idle = pool.getNumIdle();
-			log.debug("redis-cache", "SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
+			log.debug("redis-cache", "SocketUtil.getConnection before now actives : " + pool.getNumActive() + ", idle : " + pool.getNumIdle() + "; maxTotal: " + pool.getMaxTotal()
+					+ "; MaxLowPriority: " + pool.getMaxLowPriority());
 		}
 
-		Redis redis;
-		try {
-			redis = pool.borrowObject();
+		Redis redis = null;
+		if (onlyIfSufficent) {
+			synchronized (token) {
+				do {
+					if (redis != null) {
+						try {
+							pool.returnObject(redis);
+						}
+						catch (Exception e) {
+							throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+						}
+					}
+					while (pool.getMaxLowPriority() <= pool.getNumActive()) {
+						try {
+							if (timeout > 0 && log != null) {
+								log.debug("redis-cache", "wait for a connection to get free for low priority. actives : " + pool.getNumActive() + ", idle : " + pool.getNumIdle()
+										+ "; maxTotal: " + pool.getMaxTotal() + "; MaxLowPriority: " + pool.getMaxLowPriority());
+							}
+							token.wait(3000);
+							if (timeout > 0 && timeout < (System.currentTimeMillis() - start)) {
+								throw new IOException("could not aquire a lock within the given time (timeout " + timeout + "ms) with low priority.");
+							}
+						}
+						catch (Exception e) {
+							e.printStackTrace();
+							throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+						}
+					}
+					redis = borrow(timeout);
+
+				}
+				while (pool.getMaxTotal() <= pool.getNumActive());
+
+			}
 		}
-		catch (Exception e) {
-			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		else {
+			redis = borrow(timeout);
+
 		}
 
 		if (log != null) {
@@ -723,6 +829,23 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 
 		return redis;
+	}
+
+	private Redis borrow(long timeout) throws IOException {
+		try {
+			Redis redis;
+			if (timeout > 0) {
+				redis = pool.borrowObject(timeout);
+				if (redis == null) throw new IOException("could not aquire a lock within the given time (timeout " + timeout + "ms).");
+				return redis;
+			}
+			redis = pool.borrowObject();
+			if (redis == null) throw new IOException("could not aquire a lock.");
+			return redis;
+		}
+		catch (Exception e) {
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
 	}
 
 	protected void releaseConnection(Redis conn) throws IOException {
@@ -921,9 +1044,9 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	@Override
-	public Object command(byte[][] arguments) throws IOException {
+	public Object command(byte[][] arguments, boolean lowPrio, long timeout) throws IOException {
 		if (async) storage.doJoin(counter(), false);
-		Redis conn = getConnection();
+		Redis conn = getConnection(lowPrio, timeout);
 		try {
 			return conn.call(arguments);
 		}
@@ -941,9 +1064,9 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	@Override
-	public List<Object> command(List<byte[][]> arguments) throws IOException {
+	public List<Object> command(List<byte[][]> arguments, boolean lowPrio, long timeout) throws IOException {
 		if (async) storage.doJoin(counter(), false);
-		Redis conn = getConnection();
+		Redis conn = getConnection(lowPrio, timeout);
 		try {
 			Pipeline pl = conn.pipeline();
 			for (byte[][] args: arguments) {
@@ -992,5 +1115,4 @@ public class RedisCache extends CacheSupport implements Command {
 		if (v2 != 0) return v2;
 		return 0;
 	}
-
 }

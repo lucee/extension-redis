@@ -69,9 +69,16 @@ component extends="Cache" {
 		,group("Pool","Connection to Redis are handled within a Pool, the following settings allows you to configure this pool.")
 		,field(displayName = "Max Total",
 			name = "maxTotal",
-			defaultValue = 8,
+			defaultValue = 24,
 			required = true,
 			description = "The cap on the total number of active connections in the pool.",
+			type = "text"
+		)
+		,field(displayName = "Max Low Priority",
+			name = "maxLowPriority",
+			defaultValue = 0,
+			required = true,
+			description = "The limitation of connection available for the function RedisCommandLowPriority. Any number lower than 0 will be substracted from max total connections.",
 			type = "text"
 		)
 		,field(displayName = "Max Idle",

@@ -53,4 +53,71 @@
 		</return>
 	</function>
 
+
+	<!-- RedisCommandLowPriority -->
+	<function>
+		<name>RedisCommandLowPriority</name>
+		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisCommandLowPriority</class>
+		<keywords>cache,redis</keywords>
+		<description>This function works the same way as RedisCommand with only one difference. In case the connection pool is down to one free connection. The thread will wait for at least one connection more get free. So this command will not use the last connection available.</description>
+		<argument>
+			<name>arguments</name>
+			<type>any</type>
+			<required>true</required>
+			<description>arguments you wanna pass, can be a string or a string array.</description>
+	    </argument>
+	    <argument>
+			<name>async</name>
+			<type>boolean</type>
+			<default>false</default>
+			<required>false</required>
+			<description>Execute the command in a separate thread, if set to true pass a listener to get the result ot the errors.</description>
+	    </argument>
+	    <argument>
+			<name>listener</name>
+			<alias>component,cfc</alias>
+			<type>any</type>
+			<required>false</required>
+			<description>Listener only used when argument async is set to true. This can be a component or a struct containing functions with the following names.
+				"onSucess(result)" to get the result of a sucessfull execution.
+				"onError(exception)" to get the exception in case of an error.
+			</description>
+	    </argument>
+	    <argument>
+			<name>timeout</name>
+			<type>number</type>
+			<required>no</required>
+			<description>timeout for aquire a connection in milliseconds.</description>
+	    </argument>
+	    <argument>
+			<name>cache</name>
+			<alias>cacheName</alias>
+			<type>string</type>
+			<required>no</required>
+			<description>name of the cache to use, this must be a redis cache.</description>
+	    </argument>
+		<return>
+			<type>any</type>
+		</return>
+	</function>
+
+
+	<!-- RedisConnectionPoolInfo -->
+	<function>
+		<name>RedisConnectionPoolInfo</name>
+		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisConnectionPoolInfo</class>
+		<keywords>cache,redis</keywords>
+		<description>Gives back detailed information about the Redis connection pool.</description>
+	    <argument>
+			<name>cache</name>
+			<alias>cacheName</alias>
+			<type>string</type>
+			<required>no</required>
+			<description>name of the cache to use, this must be a redis cache.</description>
+	    </argument>
+		<return>
+			<type>any</type>
+		</return>
+	</function>
+
 </func-lib>

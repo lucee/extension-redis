@@ -1,0 +1,103 @@
+<!DOCTYPE taglib PUBLIC "-//Lucee//DTD CFML Tag Library 1.0//EN"
+	"dtd/web-cfmtaglibrary_1_0.dtd">
+<taglib>
+	<tlib-version>1.0</tlib-version>
+	<cfml-version>1.0</cfml-version>
+	<short-name>image</short-name>
+	<uri>http://lucee.org/tag/redis</uri>
+	<display-name>Redis Tags</display-name>
+	<description/>
+	<name-space>cf</name-space>
+	<name-space-separator></name-space-separator>
+	<el>
+		<el-class>lucee.transformer.cfml.expression.CFMLExprTransformer</el-class>
+	</el>
+	
+	<!-- DistributedLock -->
+	<tag>
+		<name>DistributedLock</name>
+		<tag-class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.lock.RedLockTag</tag-class>
+		<body-content>must</body-content>
+		<body-rtexprvalue>false</body-rtexprvalue>
+		<handle-exception>true</handle-exception>
+		<script>
+			<type>multiple</type>
+			<rtexprvalue>true</rtexprvalue>
+		</script>
+		<description>Redis based lock that can be used across servers</description>
+		<attribute-type>fixed</attribute-type>
+		<attribute>
+			<type>string</type>
+			<name>name</name>
+			<required>true</required>
+			<rtexprvalue>true</rtexprvalue>
+			<description>Specifies the name of the lock.
+			Only {amount} (see attribute amount) request(s) can execute inside this tag with a given name. 
+			Therefore, providing the name attribute allows for synchronizing access
+			to resources from different parts of an application. 
+			Lock names are global to a server. 
+			They are shared between applications and user sessions, 
+			but not across clustered servers.</description>
+		</attribute>
+		<attribute>
+			<type>string</type>
+			<name>cache</name>
+			<required>false</required>
+			<default>distLock</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>name of the redis cache used to lock.</description>
+		</attribute>
+		<attribute>
+			<type>numeric</type>
+			<name>timeout</name>
+			<required>false</required>
+			<default>0</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>Specifies the maximum amount of time, in seconds, to wait to obtain a lock.
+					If a lock can be obtained within the specified period, execution continues inside the body of the tag. 
+					Otherwise, the behavior depends on the value of the throwOnTimeout attribute. if the value is set to 0 or less, there is no timeout and it can wait forever.</description>
+		</attribute>
+		<attribute>
+			<type>boolean</type>
+			<name>throwontimeout</name>
+			<required>false</required>
+			<default>false</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>Yes or No. Specifies how timeout conditions are handled.
+				If the value is Yes, an exception is generated to provide notification of the timeout.
+				If the value is No, execution continues past the cfclock tag. Default is No.</description>
+		</attribute>
+		<attribute>
+			<type>boolean</type>
+			<name>logontimeout</name>
+			<required>false</required>
+			<default>true</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>In case we reach a timeout, and the value is set to yes, we log this to the application.log. Default is Yes.</description>
+		</attribute>
+		<attribute>
+			<type>numeric</type>
+			<name>amount</name>
+			<required>false</required>
+			<default>1</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>Defines the amount of parallel threads allowed within the lock, default is 1.</description>
+		</attribute>
+		<attribute>
+			<type>numeric</type>
+			<name>expires</name>
+			<required>false</required>
+			<default>600</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>The time in seconds a lock remains in case it not get released, by default this is 10 minutes.</description>
+		</attribute>
+		<attribute>
+			<type>boolean</type>
+			<name>bypass</name>
+			<required>false</required>
+			<default>false</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>If set to true the lock is not done at all.</description>
+		</attribute>
+	</tag>
+</taglib>

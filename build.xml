@@ -3,23 +3,26 @@
 	<description>Build Redis Extension</description>
 
   <property name="fld" location="source/fld"/>
+  <property name="tld" location="source/tld"/>
 
 	<import file="build-compile.xml"/>
 
-	<scriptdef name="replace" language="javascript">
-		<attribute name="haystack" />
-		<attribute name="needle" />
-		<attribute name="repl" />
-		<attribute name="property" />
-		<![CDATA[
-			var text = attributes.get("haystack");
-			var needle = attributes.get("needle");
-			var repl = attributes.get("repl");
-			text=text.trim();
-			text=text.replace(needle,repl);
-			project.setProperty(attributes.get("property"), text);
-		]]>
-	</scriptdef>
+  <scriptdef name="replace" language="javascript">
+     <attribute name="haystack" />
+     <attribute name="needle" />
+     <attribute name="repl" />
+     <attribute name="property" />
+     <![CDATA[
+      var text = attributes.get("haystack");
+      var needle = attributes.get("needle");
+      var repl = attributes.get("repl");
+      text=text.trim();
+
+      var regex = new RegExp(needle,'g');
+      text=text.replace(regex,repl);
+      project.setProperty(attributes.get("property"), text);
+     ]]>
+  </scriptdef>
 
 	<target name="dist" depends="compile" description="copy source file to temp" >
 
@@ -46,11 +49,19 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 			</fileset>
 		</copy>
 
+
+	    <!-- copy the tlds necessary -->
+	    <loadfile property="cntTLD1" srcFile="${tld}/tag.tldx" />
+	    <replace haystack="${cntTLD1}" needle="{bundle-name}" repl="${bundlename}" property="cntTLD2"/>
+	    <replace haystack="${cntTLD2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="cntTLD3"/>
+	    <echo message="${cntTLD3}" file="${dist}/extension2/tlds/lucee-redis.tldx"/>
+
+
 		<!-- copy the flds necessary -->
-	    <loadfile property="c1" srcFile="${fld}/function.fld" />
-	    <replace haystack="${c1}" needle="{bundle-name}" repl="${bundlename}" property="c2"/>
-	    <replace haystack="${c2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="c3"/>
-	    <echo message="${c3}" file="${dist}/extension2/flds/lucee-redis.fld"/>
+	    <loadfile property="cntFLD1" srcFile="${fld}/function.fld" />
+	    <replace haystack="${cntFLD1}" needle="{bundle-name}" repl="${bundlename}" property="cntFLD2"/>
+	    <replace haystack="${cntFLD2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="cntFLD3"/>
+	    <echo message="${cntFLD3}" file="${dist}/extension2/flds/lucee-redis.fld"/>
 
 
 		<!-- copy the jar just build -->

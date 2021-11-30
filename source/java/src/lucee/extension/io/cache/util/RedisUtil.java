@@ -3,9 +3,9 @@ package lucee.extension.io.cache.util;
 import java.lang.reflect.Method;
 
 import org.apache.commons.pool2.ObjectPool;
-import org.apache.commons.pool2.impl.GenericObjectPool;
 
 import lucee.commons.io.cache.Cache;
+import lucee.extension.io.cache.pool.RedisPool;
 import lucee.extension.io.cache.redis.Redis;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
@@ -21,24 +21,6 @@ public class RedisUtil {
 	public RedisUtil(ObjectPool<Redis> pool, boolean debug) {
 		this.pool = pool;
 		this.debug = debug;
-	}
-
-	// get socket
-	public Redis getConnection() throws Exception {
-
-		int actives = pool.getNumActive();
-		int idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.getConnection before now actives : " + actives + ", idle : " + idle);
-
-		if (debug) System.out.println(">>>>> borrowObject start");
-		Redis redis = pool.borrowObject();
-		if (debug) System.out.println(">>>>> borrowObject end");
-
-		actives = pool.getNumActive();
-		idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.getConnection after now actives : " + actives + ", idle : " + idle);
-
-		return redis;
 	}
 
 	// return socket
@@ -58,11 +40,12 @@ public class RedisUtil {
 
 	}
 
-	public static void invalidateObjectEL(GenericObjectPool<Redis> pool, Redis conn) {
+	public static void invalidateObjectEL(RedisPool pool, Redis conn) {
 		try {
 			if (conn != null) pool.invalidateObject(conn);
 		}
-		catch (Exception e) {}
+		catch (Exception e) {
+		}
 	}
 
 	public static Cache getCache(PageContext pc, String cacheName, int type) throws PageException {
