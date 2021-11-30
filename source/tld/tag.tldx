@@ -42,8 +42,7 @@
 		<attribute>
 			<type>string</type>
 			<name>cache</name>
-			<required>false</required>
-			<default>distLock</default>
+			<required>true</required>
 			<rtexprvalue>true</rtexprvalue>
 			<description>name of the redis cache used to lock.</description>
 		</attribute>

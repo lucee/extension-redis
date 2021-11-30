@@ -41,7 +41,7 @@ public class RedLock {
 		if (Util.isEmpty(name, true)) throw engine.getExceptionUtil().createApplicationException("name is required and cannot be empty!");
 		this.name = name.trim();
 
-		if (Util.isEmpty(cacheName, true)) throw engine.getExceptionUtil().createApplicationException("cacheName is required and cannot be empty!");
+		if (Util.isEmpty(cacheName, true)) throw engine.getExceptionUtil().createApplicationException("cache is required and cannot be empty!");
 		this.cacheName = cacheName.trim();
 
 		if (timeout < 10L) throw engine.getExceptionUtil().createApplicationException("timeout must be at least 0.01 seconds (10ms)");

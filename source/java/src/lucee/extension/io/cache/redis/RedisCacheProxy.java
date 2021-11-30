@@ -32,8 +32,14 @@ public class RedisCacheProxy implements Command {
 			return command.invoke(cache, new Object[] { arguments, lowPrio, timeout });
 		}
 		catch (Exception e) {
-			CFMLEngine eng = CFMLEngineFactory.getInstance();
-			throw eng.getExceptionUtil().toIOException(e);
+			try {
+				command = cache.getClass().getMethod("command", CLASS_ARGS);
+				return command.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+			}
+			catch (Exception ee) {
+				CFMLEngine eng = CFMLEngineFactory.getInstance();
+				throw eng.getExceptionUtil().toIOException(e);
+			}
 		}
 	}
 
@@ -46,8 +52,14 @@ public class RedisCacheProxy implements Command {
 			return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio, timeout });
 		}
 		catch (Exception e) {
-			CFMLEngine eng = CFMLEngineFactory.getInstance();
-			throw eng.getExceptionUtil().toIOException(e);
+			try {
+				command2 = cache.getClass().getMethod("command", CLASS_ARGS2);
+				return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+			}
+			catch (Exception ee) {
+				CFMLEngine eng = CFMLEngineFactory.getInstance();
+				throw eng.getExceptionUtil().toIOException(e);
+			}
 		}
 	}
 }

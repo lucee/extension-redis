@@ -23,23 +23,6 @@ public class RedisUtil {
 		this.debug = debug;
 	}
 
-	// return socket
-	public void releaseConnection(Redis redis) throws Exception {
-		if (redis == null) return;
-		int actives = pool.getNumActive();
-		int idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.releaseConnection before now actives : " + actives + ", idle : " + idle);
-
-		if (debug) System.out.println(">>>>> returnObject start");
-		pool.returnObject(redis);
-		if (debug) System.out.println(">>>>> returnObject end");
-
-		actives = pool.getNumActive();
-		idle = pool.getNumIdle();
-		if (debug) System.out.println("SocketUtil.releaseConnection after now actives : " + actives + ", idle : " + idle);
-
-	}
-
 	public static void invalidateObjectEL(RedisPool pool, Redis conn) {
 		try {
 			if (conn != null) pool.invalidateObject(conn);
