@@ -55,8 +55,8 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 
 	public void setTimeout(double timeout) throws PageException {
 		if (timeout < 0) timeout = 0;
-		timeout = ((int) (timeout * 100)) / 100;
-		if (timeout < 0.01) throw engine.getExceptionUtil().createApplicationException("timeout must be at least 0.01");
+		timeout = ((int) (timeout * 100)) / 100D;
+		if (timeout < 0.01) throw engine.getExceptionUtil().createApplicationException("timeout must be at least 0.01, now it is [" + timeout + "]");
 
 		this.timeout = (long) (timeout * 1000D);
 	}

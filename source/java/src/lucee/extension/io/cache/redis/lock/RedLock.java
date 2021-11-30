@@ -45,7 +45,7 @@ public class RedLock {
 		this.cacheName = cacheName.trim();
 
 		if (timeout < 10L) throw engine.getExceptionUtil().createApplicationException("timeout must be at least 0.01 seconds (10ms)");
-
+		else this.timeout = timeout;
 		this.throwontimeout = throwontimeout;
 		this.logontimeout = logontimeout;
 
@@ -131,8 +131,8 @@ public class RedLock {
 		return true;
 	}
 
-	private String timeoutInSeconds() {
-		return engine.getCastUtil().toString((((int) (timeout / 10)) / 100d));
+	String timeoutInSeconds() {
+		return engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d));
 	}
 
 	/**
