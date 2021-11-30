@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocketFactory;
+
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
@@ -23,27 +26,38 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	private final long idleTimeout;
 	private final long liveTimeout;
 	private final Log log;
+	private final boolean ssl;
 
-	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, int socketTimeout, long idleTimeout, long liveTimeout, int databaseIndex,
-			Log log) {
+	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, boolean ssl, int socketTimeout, long idleTimeout, long liveTimeout,
+			int databaseIndex, Log log) {
 		this.cl = cl;
 		this.username = Util.isEmpty(username) ? null : username;
 		this.password = Util.isEmpty(password) ? null : password;
 		this.host = host;
 		this.port = port;
+		this.ssl = ssl;
 
 		this.socketTimeout = socketTimeout;
 		this.idleTimeout = idleTimeout;
 		this.liveTimeout = liveTimeout;
 		this.log = log;
 		this.databaseIndex = databaseIndex;
-
 	}
 
 	@Override
 	public Redis create() throws IOException {
 		if (log != null) log.debug("redis-cache", "create connection to " + host + ":" + port);
-		Socket socket = new Socket();
+		Socket socket;
+		if (ssl) {
+			// TODO allow custom params
+			SocketFactory factory = SSLSocketFactory.getDefault();
+			socket = factory.createSocket();
+
+		}
+		else {
+			socket = new Socket();
+		}
+
 		InetSocketAddress serverInfo = new InetSocketAddress(host, port);
 		if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
 		else socket.connect(serverInfo);
@@ -103,6 +117,7 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 
 	@Override
 	public void passivateObject(PooledObject<Redis> p) throws Exception {
+
 		if (log != null) log.debug("redis-cache", "passivateObject");
 		p.getObject().lastUsed = System.currentTimeMillis();
 		super.passivateObject(p);
