@@ -50,11 +50,14 @@
 			<type>numeric</type>
 			<name>timeout</name>
 			<required>false</required>
-			<default>0</default>
+			<default>0.01</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>Specifies the maximum amount of time, in seconds, to wait to obtain a lock.
-					If a lock can be obtained within the specified period, execution continues inside the body of the tag. 
-					Otherwise, the behavior depends on the value of the throwOnTimeout attribute. if the value is set to 0 or less, there is no timeout and it can wait forever.</description>
+			<description>
+				Specifies the maximum amount of time in seconds, to wait to obtain a lock.
+				If a lock can be obtained within the specified period, execution continues inside the body of the tag. 
+				Otherwise, the behavior depends on the value of the throwOnTimeout attribute. 
+				The value must be at least 0.01.
+			</description>
 		</attribute>
 		<attribute>
 			<type>boolean</type>

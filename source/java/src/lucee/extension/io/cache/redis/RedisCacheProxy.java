@@ -13,8 +13,8 @@ import lucee.loader.engine.CFMLEngineFactory;
  */
 public class RedisCacheProxy implements Command {
 
-	private static final Class[] CLASS_ARGS = new Class[] { byte[][].class, boolean.class, long.class };
-	private static final Class[] CLASS_ARGS2 = new Class[] { List.class, boolean.class, long.class };
+	private static final Class[] CLASS_ARGS = new Class[] { byte[][].class, boolean.class };
+	private static final Class[] CLASS_ARGS2 = new Class[] { List.class, boolean.class };
 	private Cache cache;
 	private Method command;
 	private Method command2;
@@ -24,17 +24,17 @@ public class RedisCacheProxy implements Command {
 	}
 
 	@Override
-	public Object command(byte[][] arguments, boolean lowPrio, long timeout) throws IOException {
+	public Object command(byte[][] arguments, boolean lowPrio) throws IOException {
 		try {
 			if (command == null || command.getDeclaringClass().getClassLoader() != cache.getClass().getClassLoader()) {
 				command = cache.getClass().getMethod("command", CLASS_ARGS);
 			}
-			return command.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+			return command.invoke(cache, new Object[] { arguments, lowPrio });
 		}
 		catch (Exception e) {
 			try {
 				command = cache.getClass().getMethod("command", CLASS_ARGS);
-				return command.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+				return command.invoke(cache, new Object[] { arguments, lowPrio });
 			}
 			catch (Exception ee) {
 				CFMLEngine eng = CFMLEngineFactory.getInstance();
@@ -44,17 +44,17 @@ public class RedisCacheProxy implements Command {
 	}
 
 	@Override
-	public List<Object> command(List<byte[][]> arguments, boolean lowPrio, long timeout) throws IOException {
+	public List<Object> command(List<byte[][]> arguments, boolean lowPrio) throws IOException {
 		try {
 			if (command2 == null || command2.getDeclaringClass().getClassLoader() != cache.getClass().getClassLoader()) {
 				command2 = cache.getClass().getMethod("command", CLASS_ARGS2);
 			}
-			return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+			return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio });
 		}
 		catch (Exception e) {
 			try {
 				command2 = cache.getClass().getMethod("command", CLASS_ARGS2);
-				return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio, timeout });
+				return (List<Object>) command2.invoke(cache, new Object[] { arguments, lowPrio });
 			}
 			catch (Exception ee) {
 				CFMLEngine eng = CFMLEngineFactory.getInstance();

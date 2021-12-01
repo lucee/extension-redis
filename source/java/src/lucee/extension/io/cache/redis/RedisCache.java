@@ -46,6 +46,7 @@ public class RedisCache extends CacheSupport implements Command {
 	protected int socketTimeout;
 	protected long liveTimeout;
 	protected long idleTimeout;
+	protected long connTimeout;
 	protected String password;
 
 	private ClassLoader cl;
@@ -108,6 +109,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 		liveTimeout = caster.toLongValue(arguments.get("liveTimeout", null), 3600000L);
 		idleTimeout = caster.toLongValue(arguments.get("idleTimeout", null), -1L);
+		connTimeout = caster.toLongValue(arguments.get("connectionTimeout", null), 5000L);
 
 		username = caster.toString(arguments.get("username", null), null);
 		if (Util.isEmpty(username)) username = null;
@@ -802,7 +804,7 @@ public class RedisCache extends CacheSupport implements Command {
 							}
 							token.wait(3000);
 							if (timeout > 0 && timeout < (System.currentTimeMillis() - start)) {
-								throw new IOException("could not aquire a lock within the given time (timeout " + timeout + "ms) with low priority.");
+								throw new IOException("could not aquire a connection within the given time (connection timeout " + timeout + "ms) with low priority.");
 							}
 						}
 						catch (Exception e) {
@@ -836,7 +838,7 @@ public class RedisCache extends CacheSupport implements Command {
 			Redis redis;
 			if (timeout > 0) {
 				redis = pool.borrowObject(timeout);
-				if (redis == null) throw new IOException("could not aquire a lock within the given time (timeout " + timeout + "ms).");
+				if (redis == null) throw new IOException("could not aquire a connection within the given time (connection timeout " + timeout + "ms).");
 				return redis;
 			}
 			redis = pool.borrowObject();
@@ -1044,9 +1046,10 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	@Override
-	public Object command(byte[][] arguments, boolean lowPrio, long timeout) throws IOException {
+	public Object command(byte[][] arguments, boolean lowPrio) throws IOException {
 		if (async) storage.doJoin(counter(), false);
-		Redis conn = getConnection(lowPrio, timeout);
+
+		Redis conn = getConnection(lowPrio, this.connTimeout);
 		try {
 			return conn.call(arguments);
 		}
@@ -1064,9 +1067,9 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	@Override
-	public List<Object> command(List<byte[][]> arguments, boolean lowPrio, long timeout) throws IOException {
+	public List<Object> command(List<byte[][]> arguments, boolean lowPrio) throws IOException {
 		if (async) storage.doJoin(counter(), false);
-		Redis conn = getConnection(lowPrio, timeout);
+		Redis conn = getConnection(lowPrio, this.connTimeout);
 		try {
 			Pipeline pl = conn.pipeline();
 			for (byte[][] args: arguments) {

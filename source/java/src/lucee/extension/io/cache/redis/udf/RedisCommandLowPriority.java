@@ -13,16 +13,15 @@ public class RedisCommandLowPriority extends AbstrRedisCommand {
 	@Override
 	public Object invoke(PageContext pc, Object[] args) throws PageException {
 		CFMLEngine eng = CFMLEngineFactory.getInstance();
-		if (args.length < 1 || args.length > 4) throw eng.getExceptionUtil().createFunctionException(pc, "RedisCommandLowPriority", 1, 5, args.length);
+		if (args.length < 1 || args.length > 4) throw eng.getExceptionUtil().createFunctionException(pc, "RedisCommandLowPriority", 1, 4, args.length);
 		Cast cast = eng.getCastUtil();
 
 		Object _args = args[0];
 		boolean async = args.length >= 2 && args[1] != null ? cast.toBooleanValue(args[1]) : false;
 		Object listener = args.length >= 3 && args[2] != null ? args[2] : null;
-		long timeout = args.length >= 4 && args[3] != null ? cast.toLongValue(args[3]) : 0;
-		String cacheName = args.length >= 5 && args[4] != null ? cast.toString(args[4]).toUpperCase() : null;
+		String cacheName = args.length >= 4 && args[3] != null ? cast.toString(args[3]).toUpperCase() : null;
 
-		return invoke(pc, eng, _args, async, listener, cacheName, timeout);
+		return invoke(pc, eng, _args, async, listener, cacheName);
 	}
 
 	@Override

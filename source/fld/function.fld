@@ -84,12 +84,6 @@
 			</description>
 	    </argument>
 	    <argument>
-			<name>timeout</name>
-			<type>number</type>
-			<required>no</required>
-			<description>timeout for aquire a connection in milliseconds.</description>
-	    </argument>
-	    <argument>
 			<name>cache</name>
 			<alias>cacheName</alias>
 			<type>string</type>

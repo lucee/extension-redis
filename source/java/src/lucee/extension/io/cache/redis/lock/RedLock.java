@@ -2,6 +2,7 @@ package lucee.extension.io.cache.redis.lock;
 
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;
+import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -104,21 +105,31 @@ public class RedLock {
 		cmd3.append(expires + "");
 		commands.append(cmd3);
 
-		Array res = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName, timeout), null);
+		Array res = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
 		// we could NOT aquire a lock
 		if (res == null || !res.containsKey(2)) {
-
+			print.e(res);
 			// in case of a null, the expire in the last RedisCommand prolong the list expiry with no reason.
 			// this code revert back to the expire it should be by looking on the current time and subtract the
 			// last lock time
 			Array cmd = engine.getCreationUtil().createArray();
 			cmd.append("eval");
-			cmd.append("local ltime=redis.call('lrange',KEYS[1],0,0);" + " if ltime[1] ~= nil then " + " local lock_remain_time = ARGV[1] - (redis.call('time')[1] - ltime[1]);"
-					+ " if lock_remain_time > 0 then" + " redis.call('expire',KEYS[1],lock_remain_time);" + " end end");
+			cmd.append("local ltime=redis.call('lrange',KEYS[1],0,0);"
+
+					+ " if ltime[1] ~= nil then "
+
+					+ " local lock_remain_time = ARGV[1] - (redis.call('time')[1] - ltime[1]);"
+
+					+ " if lock_remain_time > 0 then"
+
+					+ " redis.call('expire',KEYS[1],lock_remain_time);"
+
+					+ " end end");
+			cmd.append("1");
 			cmd.append(lockNameClose);
 			cmd.append(expires + "");
 
-			new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName, timeout);
+			new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName);
 			if (logontimeout) {
 				pc.getConfig().getLog("application").error("RedLock", "reached timeout [" + timeoutInSeconds() + "] for log [" + name + "]");
 			}
@@ -150,7 +161,7 @@ public class RedLock {
 			cmd.append(lockNameClose);
 			cmd.append(lockNameOpen);
 
-			Object res = new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName, timeout);
+			Object res = new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName);
 
 			if (res == null) {
 				pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present");

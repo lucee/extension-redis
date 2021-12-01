@@ -21,7 +21,7 @@ public class RedisCommand extends AbstrRedisCommand {
 		Object listener = args.length >= 3 && args[2] != null ? args[2] : null;
 		String cacheName = args.length >= 4 && args[3] != null ? cast.toString(args[3]).toUpperCase() : null;
 
-		return invoke(pc, eng, _args, async, listener, cacheName, 0);
+		return invoke(pc, eng, _args, async, listener, cacheName);
 	}
 
 	@Override

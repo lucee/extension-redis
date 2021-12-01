@@ -43,7 +43,7 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 		ON_ERROR = CFMLEngineFactory.getInstance().getCreationUtil().createKey("onError");
 	}
 
-	public Object invoke(PageContext pc, CFMLEngine eng, Object _args, boolean async, Object listener, String cacheName, long timeout) throws PageException {
+	public Object invoke(PageContext pc, CFMLEngine eng, Object _args, boolean async, Object listener, String cacheName) throws PageException {
 		if (eng == null) eng = CFMLEngineFactory.getInstance();
 
 		_args = toBytesArray(eng, _args);
@@ -52,11 +52,11 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 
 		try {
 			if (async) {
-				executor.execute(new Executable(eng, pc, rc, listener, _args, timeout));
+				executor.execute(new Executable(eng, pc, rc, listener, _args));
 				return null;
 			}
-			if (_args instanceof byte[][]) return evalResult(pc.getClass().getClassLoader(), rc.command((byte[][]) _args, isLowPrio(), timeout));
-			return evalResult(pc.getClass().getClassLoader(), rc.command((List<byte[][]>) _args, isLowPrio(), timeout));
+			if (_args instanceof byte[][]) return evalResult(pc.getClass().getClassLoader(), rc.command((byte[][]) _args, isLowPrio()));
+			return evalResult(pc.getClass().getClassLoader(), rc.command((List<byte[][]>) _args, isLowPrio()));
 		}
 		catch (IOException e) {
 			throw eng.getCastUtil().toPageException(e);
@@ -140,16 +140,14 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 		private Object listener;
 		private Object args;
 		private PageContext pc;
-		private long timeout;
 
-		public Executable(CFMLEngine eng, PageContext parent, Command rc, Object listener, Object args, long timeout) throws PageException {
+		public Executable(CFMLEngine eng, PageContext parent, Command rc, Object listener, Object args) throws PageException {
 			this.eng = eng;
 			this.config = parent.getConfig();
 			this.pc = clonePageContext(parent);
 			this.rc = rc;
 			this.listener = listener;
 			this.args = args;
-			this.timeout = timeout;
 		}
 
 		@Override
@@ -157,8 +155,8 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 			try {
 				if (pc != null) eng.registerThreadPageContext(pc);
 				Object res;
-				if (args instanceof byte[][]) res = evalResult(config.getClass().getClassLoader(), rc.command((byte[][]) args, false, timeout));
-				else res = evalResult(config.getClass().getClassLoader(), rc.command((List<byte[][]>) args, false, timeout));
+				if (args instanceof byte[][]) res = evalResult(config.getClass().getClassLoader(), rc.command((byte[][]) args, false));
+				else res = evalResult(config.getClass().getClassLoader(), rc.command((List<byte[][]>) args, false));
 
 				if (has(pc, ON_SUCCESS)) {
 					eng.registerThreadPageContext(pc);

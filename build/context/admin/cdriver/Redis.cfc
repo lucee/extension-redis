@@ -77,7 +77,7 @@ component extends="Cache" {
 		,field(displayName = "Max Low Priority",
 			name = "maxLowPriority",
 			defaultValue = 0,
-			required = true,
+			required = false,
 			description = "The limitation of connection available for the function RedisCommandLowPriority. Any number lower than 0 will be substracted from max total connections.",
 			type = "text"
 		)
@@ -95,18 +95,33 @@ component extends="Cache" {
 			description = "the target for the minimum number of idle connections to maintain in the pool.",
 			type = "text"
 		)
-		,field(displayName = "Timeout",
-			name = "timeout",
-			defaultValue = 2000,
-			required = true,
+
+		,field(displayName = "Live Timeout",
+			name = "liveTimeout",
+			defaultValue = 3600000,
+			required = false,
+			description = "The maximal live span of a connection inside the pool in milliseconds.",
+			type = "text"
+		)
+		,field(displayName = "Idle Timeout",
+			name = "idleTimeout",
+			defaultValue = 300000,
+			required = false,
 			description = "Timeout in milliseconds for connections that are idling.",
 			type = "text"
 		)
-		,field(displayName = "Database index",
-			name = "databaseIndex",
-			defaultValue = -1,
+		,field(displayName = "Connection Timeout",
+			name = "connectionTimeout",
+			defaultValue = 5000,
 			required = false,
-			description = "Define a specific Database index.",
+			description = "Timeout in milliseconds to aquire a connection from pool. This becomes necessary in case the pool is exhausted",
+			type = "text"
+		)
+		,field(displayName = "Socket Timeout",
+			name = "socketTimeout",
+			defaultValue = 2000,
+			required = false,
+			description = "Timeout in milliseconds to create the connection (create a socket connection to Redis).",
 			type = "text"
 		)
 	];
