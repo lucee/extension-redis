@@ -61,6 +61,14 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		this.timeout = (long) (timeout * 1000D);
 	}
 
+	public void setThrowontimeout(boolean throwontimeout) {
+		this.throwontimeout = throwontimeout;
+	}
+
+	public void setLogontimeout(boolean logontimeout) {
+		this.logontimeout = logontimeout;
+	}
+
 	public void setExpires(double expires) throws PageException {
 		this.expires = (int) expires;
 		if (this.expires <= 0) this.expires = 600;
