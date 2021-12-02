@@ -109,7 +109,8 @@ public class RedisCache extends CacheSupport implements Command {
 
 		liveTimeout = caster.toLongValue(arguments.get("liveTimeout", null), 3600000L);
 		idleTimeout = caster.toLongValue(arguments.get("idleTimeout", null), -1L);
-		connTimeout = caster.toLongValue(arguments.get("connectionTimeout", null), 5000L);
+		connTimeout = caster.toLongValue(arguments.get("connectionTimeout", null), -1);
+		if (connTimeout == -1) connTimeout = caster.toLongValue(arguments.get("connectionAcquireTimeout", null), 5000L);
 
 		username = caster.toString(arguments.get("username", null), null);
 		if (Util.isEmpty(username)) username = null;
