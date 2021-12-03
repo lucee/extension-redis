@@ -13,13 +13,13 @@ import java.util.concurrent.Executors;
 import lucee.commons.io.cache.Cache;
 import lucee.extension.io.cache.redis.Command;
 import lucee.extension.io.cache.redis.RedisCache;
-import lucee.extension.io.cache.redis.RedisCacheProxy;
 import lucee.extension.io.cache.util.Coder;
 import lucee.extension.io.cache.util.RedisUtil;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.runtime.Component;
 import lucee.runtime.PageContext;
+import lucee.runtime.cache.CacheConnection;
 import lucee.runtime.config.Config;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.ext.function.BIF;
@@ -48,9 +48,8 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 
 		_args = toBytesArray(eng, _args);
 
-		Command rc = getCommand(pc, eng, cacheName);
-
 		try {
+			Command rc = getCommand(pc, eng, cacheName);
 			if (async) {
 				executor.execute(new Executable(eng, pc, rc, listener, _args));
 				return null;
@@ -63,16 +62,20 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 		}
 	}
 
-	protected Command getCommand(PageContext pc, CFMLEngine eng, String cacheName) throws PageException {
-		Command rc = null;
-		Cache cache = RedisUtil.getCache(pc, cacheName, Config.CACHE_TYPE_OBJECT);
-		if (!(cache instanceof Command)) {
-			if (!cache.getClass().getName().equals(RedisCache.class.getName())
-					&& !cache.getClass().getName().equals(lucee.extension.io.cache.redis.simple.RedisCache.class.getName()))
-				throw eng.getExceptionUtil().createApplicationException("cache [" + cacheName + "; class:" + cache.getClass().getName() + "] is not a redis cache");
-			return new RedisCacheProxy(cache);
+	protected Command getCommand(PageContext pc, CFMLEngine eng, String cacheName) throws PageException, IOException {
+
+		CacheConnection cc = RedisUtil.getCacheConnection(pc, cacheName);
+		Cache cache = cc.getInstance(pc.getConfig());
+		if (cache instanceof Command && false) return (Command) cache;
+
+		if (!cache.getClass().getName().equals(RedisCache.class.getName())
+				&& !cache.getClass().getName().equals(lucee.extension.io.cache.redis.simple.RedisCache.class.getName())) {
+			throw eng.getExceptionUtil().createApplicationException("cache [" + cacheName + "; class:" + cache.getClass().getName() + "] is not a redis cache");
 		}
-		else return (Command) cache;
+
+		cc = RedisUtil.cloneCacheConnection(pc, cc);
+		return (Command) cc.getInstance(pc.getConfig());
+
 	}
 
 	private static final Object evalResult(ClassLoader cl, Object res) throws IOException {
