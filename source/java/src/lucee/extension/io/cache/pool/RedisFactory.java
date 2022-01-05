@@ -47,16 +47,7 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	@Override
 	public Redis create() throws IOException {
 		if (log != null) log.debug("redis-cache", "create connection to " + host + ":" + port);
-		Socket socket;
-		if (ssl) {
-			// TODO allow custom params
-			SocketFactory factory = SSLSocketFactory.getDefault();
-			socket = factory.createSocket();
-
-		}
-		else {
-			socket = new Socket();
-		}
+		Socket socket = getSocket();
 
 		InetSocketAddress serverInfo = new InetSocketAddress(host, port);
 		if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
@@ -71,6 +62,18 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 			redis.call("SELECT", String.valueOf(databaseIndex));
 		}
 		return redis;
+	}
+
+	private Socket getSocket() throws IOException {
+		if (ssl) {
+
+			SocketFactory factory = SSLSocketFactory.getDefault();
+			return factory.createSocket();
+
+		}
+		else {
+			return new Socket();
+		}
 	}
 
 	/**

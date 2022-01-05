@@ -66,7 +66,7 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 
 		CacheConnection cc = RedisUtil.getCacheConnection(pc, cacheName);
 		Cache cache = cc.getInstance(pc.getConfig());
-		if (cache instanceof Command && false) return (Command) cache;
+		if (cache instanceof Command) return (Command) cache;
 
 		if (!cache.getClass().getName().equals(RedisCache.class.getName())
 				&& !cache.getClass().getName().equals(lucee.extension.io.cache.redis.simple.RedisCache.class.getName())) {

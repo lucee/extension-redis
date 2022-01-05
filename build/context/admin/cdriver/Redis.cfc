@@ -14,6 +14,14 @@ component extends="Cache" {
 			description = "Port Redis is listening on.",
 			type = "text"
 		)
+		,field(displayName = "SSL",
+			name = "ssl",
+			defaultValue = false,
+			required = false,
+			description = "Establish an SSL connection to the Redis Server",
+			type = "checkbox",
+			values = true
+		)
 
 		,group("Direct Authentication","Authentication Credentials")
 		,field(displayName = "Username",
