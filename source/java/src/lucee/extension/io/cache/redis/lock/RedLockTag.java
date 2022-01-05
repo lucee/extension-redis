@@ -14,7 +14,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	private String cache;
 	private boolean bypass;
 	private int amount = 1;
-	private int expires = 1;
+	private int expires = 30;
 	private long timeout = 0L;
 	private boolean throwontimeout;
 	private boolean logontimeout = true;
@@ -26,7 +26,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		cache = null;
 		bypass = false;
 		amount = 1;
-		expires = 1;
+		expires = 30;
 		timeout = 0L;
 		this.throwontimeout = false;
 		this.logontimeout = true;

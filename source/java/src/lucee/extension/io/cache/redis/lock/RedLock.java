@@ -2,7 +2,6 @@ package lucee.extension.io.cache.redis.lock;
 
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;
-import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -75,7 +74,6 @@ public class RedLock {
 		release = false;
 
 		Array commands = engine.getCreationUtil().createArray();
-
 		Array cmd1 = engine.getCreationUtil().createArray();
 		cmd1.append("eval");
 		cmd1.append("local open_len = redis.call('llen', KEYS[1]);"
@@ -86,7 +84,12 @@ public class RedLock {
 
 				+ " if open_len	+ close_len < " + amount + " then redis.call('LPUSH', KEYS[1], time)"
 
-				+ " elseif open_len + close_len > " + amount + " then redis.call('DEL', KEYS[1]) end");
+				+ " elseif open_len + close_len > " + amount + " then redis.call('DEL', KEYS[1]) "
+
+				+ " elseif open_len > 0 then redis.call('LSET', KEYS[1],-1,time) end"
+
+		);
+
 		cmd1.append("1");
 		cmd1.append(lockNameOpen);
 		cmd1.append(lockNameClose);
@@ -108,7 +111,6 @@ public class RedLock {
 		Array res = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
 		// we could NOT aquire a lock
 		if (res == null || !res.containsKey(2)) {
-			print.e(res);
 			// in case of a null, the expire in the last RedisCommand prolong the list expiry with no reason.
 			// this code revert back to the expire it should be by looking on the current time and subtract the
 			// last lock time
@@ -160,9 +162,7 @@ public class RedLock {
 			cmd.append("RPOPLPUSH");
 			cmd.append(lockNameClose);
 			cmd.append(lockNameOpen);
-
 			Object res = new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName);
-
 			if (res == null) {
 				pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present");
 			}
