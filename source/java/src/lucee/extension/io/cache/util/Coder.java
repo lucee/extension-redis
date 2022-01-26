@@ -6,13 +6,21 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.charset.Charset;
+import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import org.bson.BsonDocument;
+import org.bson.BsonValue;
 
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 
 public class Coder {
+
+	private static final byte GZIP0 = (byte) 0x1f;
+	private static final byte GZIP1 = (byte) 0x8b;
 
 	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5 };
 
@@ -56,9 +64,21 @@ public class Coder {
 
 	public static Object evaluate(ClassLoader cl, byte[] data) throws IOException {
 		if (data == null) return null;
+		if (isGzip(data)) {
+			return decompress(cl, data);
+		}
+
 		if (!isObjectStream(data)) {
 			BsonDocument doc = BSON.toBsonDocument(data, null);
 			if (doc != null) {
+				if (doc.getFirstKey().equals(BSON.IK_STORAGEVALUE_KEY)) {
+					Iterator<Entry<String, BsonValue>> it = doc.entrySet().iterator();
+					Entry<String, BsonValue> first = it.next();
+					BsonValue v = first.getValue();
+					if (v.isInt64() && first.getKey().equals(BSON.IK_STORAGEVALUE_KEY)) {
+						return BSON.toIKStorageValue(v.asInt64().longValue(), it, CFMLEngineFactory.getInstance());
+					}
+				}
 				return BSON.toStruct(doc, CFMLEngineFactory.getInstance());
 			}
 			return toString(data);
@@ -99,44 +119,40 @@ public class Coder {
 		if (value instanceof Number) {
 			return toBytes(value.toString());
 		}
-		// if (value instanceof Boolean) return toBytes(value.toString());
 
 		BsonDocument doc = BSON.toBsonDocument(value, false, null);
 		if (doc != null) {
 			return BSON.toBytes(doc);
 		}
 
-		ByteArrayOutputStream os = new ByteArrayOutputStream(); // returns
-		ObjectOutputStream oos = new ObjectOutputStream(os);
-		oos.writeObject(value);
-		oos.flush();
-		return os.toByteArray();
+		return compress(value);
 	}
 
-	/*
-	 * private static Object evaluateLegacy(String val) throws IOException { try { // number if
-	 * (val.startsWith("nbr(") && val.endsWith(")")) { // System.err.println("nbr:" + val + ":" +
-	 * func.getClass().getName()); return
-	 * CFMLEngineFactory.getInstance().getCastUtil().toDouble(val.substring(4, val.length() - 1)); } //
-	 * boolean else if (val.startsWith("bool(") && val.endsWith(")")) { // System.err.println("bool:" +
-	 * val + ":" + func.getClass().getName()); return
-	 * CFMLEngineFactory.getInstance().getCastUtil().toBoolean(val.substring(5, val.length() - 1)); } //
-	 * date else if (val.startsWith("date(") && val.endsWith(")")) { CFMLEngine e =
-	 * CFMLEngineFactory.getInstance(); return
-	 * e.getCreationUtil().createDate(e.getCastUtil().toLongValue(val.substring(5, val.length() - 1)));
-	 * } // eval else if (val.startsWith("eval(") && val.endsWith(")")) { // System.err.println("eval:"
-	 * + val + ":" + func.getClass().getName()); return Functions.evaluate(val.substring(5, val.length()
-	 * - 1)); } } catch (PageException pe) {
-	 * CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(pe); } return val; }
-	 */
+	public static byte[] compress(Object val) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(new GZIPOutputStream(baos));
+		oos.writeObject(val);
+		oos.close();
+		return baos.toByteArray();
+	}
 
-	/*
-	 * public static void main(String[] args) throws IOException { ClassLoader cl =
-	 * Coder.class.getClassLoader(); Object res = evaluate(cl, serialize("abc".getBytes()));
-	 * print.e(res.getClass().getName()); print.e(res);
-	 * 
-	 * print.e(evaluate(cl, serialize("abc"))); print.e(evaluate(cl, serialize(new ArrayList<>())));
-	 * print.e(evaluate(cl, serialize(new HashMap<>()))); }
-	 */
+	public static Object decompress(ClassLoader cl, byte[] bytes) throws IOException {
+		ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
+		ObjectInputStreamImpl objectIn = new ObjectInputStreamImpl(cl, new GZIPInputStream(bais));
+		try {
+			Object val = objectIn.readObject();
+			objectIn.close();
+			return val;
+		}
+		catch (ClassNotFoundException e) {
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
+	}
+
+	public static boolean isGzip(byte[] barr) throws IOException {
+		return barr[0] == GZIP0 && barr[1] == GZIP1;
+
+		//
+	}
 
 }

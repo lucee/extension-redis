@@ -8,6 +8,8 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
 import java.io.Serializable;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bson.BsonArray;
 import org.bson.BsonBinary;
@@ -42,9 +45,11 @@ import org.bson.internal.Base64;
 import org.bson.io.BasicOutputBuffer;
 import org.bson.types.Decimal128;
 
+import lucee.commons.io.log.Log;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
+import lucee.runtime.config.Config;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.op.Castable;
 import lucee.runtime.type.Collection;
@@ -55,9 +60,31 @@ import lucee.runtime.type.Struct;
 public class BSON {
 	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5 };
 
+	private static Method getValue;
+
+	private static Method lastModified;
+
+	private static Method lastModifiedItem;
+
+	private static Class<?> IKStorageValue;
+
+	private static Constructor<?> IKStorageValueConstr;
+
+	private static Class<?> IKStorageScopeItem;
+
+	private static Constructor<?> IKStorageScopeItemConstr;
+
 	public static final Charset UTF8 = Charset.forName("UTF-8");
 
 	private static final byte LAST_BYTE_OF_A_BSON_BYTE_ARRAY = 0;
+
+	private static final Class<?>[] EMPTY_CLASS = new Class[0];
+	private static final Object[] EMPTY_OBJ = new Object[0];
+
+	public static final String IK_STORAGEVALUE_KEY = "iksvk";
+
+	private static final Class<?>[] IK_STOARE_VALUE_INIT = new Class[] { Map.class, byte[].class, long.class };
+	private static final Class<?>[] IK_STOARE_ITEM_INIT = new Class[] { Object.class, long.class };
 
 	public static Map<String, Object> toMap(byte[] raw) throws IOException {
 		return toMap(toBsonDocument(raw));
@@ -93,6 +120,7 @@ public class BSON {
 			return toBsonDocument(raw);
 		}
 		catch (Exception e) {
+			log(e);
 		}
 		return defaultValue;
 	}
@@ -125,6 +153,35 @@ public class BSON {
 			sct.setEL(e.getKey(), _toObject(e.getValue(), engine));
 		}
 		return sct;
+	}
+
+	public static Object toIKStorageValue(long lastModified, Iterator<Entry<String, BsonValue>> it, CFMLEngine engine) throws IOException {
+		try {
+			if (IKStorageValue == null) {
+				IKStorageValue = engine.getClassUtil().loadClass("lucee.runtime.type.scope.storage.IKStorageValue");
+				IKStorageValueConstr = IKStorageValue.getConstructor(IK_STOARE_VALUE_INIT);
+				IKStorageScopeItem = engine.getClassUtil().loadClass("lucee.runtime.type.scope.storage.IKStorageScopeItem");
+				IKStorageScopeItemConstr = IKStorageScopeItem.getConstructor(IK_STOARE_ITEM_INIT);
+			}
+
+			Map<Key, Object> map = new ConcurrentHashMap<>();
+
+			// lastModified) {
+			Entry<String, BsonValue> e;
+			BsonArray arr;
+			while (it.hasNext()) {
+				e = it.next();
+				arr = e.getValue().asArray();
+
+				map.put(engine.getCastUtil().toKey(e.getKey()),
+						IKStorageScopeItemConstr.newInstance(new Object[] { _toObject(arr.get(1), engine), arr.get(0).asInt64().longValue() }));
+			}
+
+			return IKStorageValueConstr.newInstance(new Object[] { map, null, lastModified });
+		}
+		catch (Exception e) {
+			throw engine.getExceptionUtil().toIOException(e);
+		}
 	}
 
 	private static Object _toObject(BsonValue bv, CFMLEngine engine) throws IOException {
@@ -164,6 +221,7 @@ public class BSON {
 		}
 		if (bv.isBinary()) {
 			byte[] data = bv.asBinary().getData();
+			if (Coder.isGzip(data)) return Coder.decompress(CFMLEngineFactory.getInstance().getClass().getClassLoader(), data);
 			if (isObjectStream(data)) return evaluate(CFMLEngineFactory.getInstance().getClass().getClassLoader(), data);
 			return data;
 
@@ -197,8 +255,11 @@ public class BSON {
 		try {
 			if (o instanceof Struct) return _toBsonDocumentStruct((Struct) o, new HashSet<>(), allowObjectSerialisation);
 			if (o instanceof Map<?, ?>) return _toBsonDocumentMap((Map<?, ?>) o, new HashSet<>(), allowObjectSerialisation);
+			if ("lucee.runtime.type.scope.storage.IKStorageValue".equals(o.getClass().getName()))
+				return _toBsonDocumentIKStorageValue(o, new HashSet<>(), allowObjectSerialisation);
 		}
 		catch (Exception e) {
+			log(e);
 		}
 		return defaultValue;
 	}
@@ -207,7 +268,7 @@ public class BSON {
 
 		if (o instanceof Struct) return _toBsonDocumentStruct((Struct) o, new HashSet<>(), allowObjectSerialisation);
 		if (o instanceof Map<?, ?>) return _toBsonDocumentMap((Map<?, ?>) o, new HashSet<>(), allowObjectSerialisation);
-
+		if ("lucee.runtime.type.scope.storage.IKStorageValue".equals(o.getClass().getName())) return _toBsonDocumentIKStorageValue(o, new HashSet<>(), allowObjectSerialisation);
 		if (o == null) throw new IOException("cannot convert null value to a BSON object");
 		throw new IOException("cannot convert [" + o.getClass().getName() + "] to a BSON object, object must be a struct or a map");
 	}
@@ -275,7 +336,7 @@ public class BSON {
 		}
 
 		if (allowObjectSerialisation && o instanceof Serializable) {
-			return _toBsonValue(serialize((Serializable) o));
+			return _toBsonValue(Coder.compress(o));
 		}
 
 		// Decision dec = CFMLEngineFactory.getInstance().getDecisionUtil();
@@ -324,6 +385,43 @@ public class BSON {
 			doc.append(e.getKey().toString(), toBsonValue(e.getValue(), inside, allowObjectSerialisation)); // TODO do caster.toString here
 		}
 		return doc;
+	}
+
+	private static BsonDocument _toBsonDocumentIKStorageValue(Object obj, Set<Object> inside, boolean allowObjectSerialisation) throws IOException, RuntimeException {
+		try {
+			// init methods
+			if (getValue == null || getValue.getDeclaringClass() != obj.getClass()) {
+				getValue = obj.getClass().getMethod("getValue", EMPTY_CLASS);
+				lastModified = obj.getClass().getMethod("lastModified", EMPTY_CLASS);
+			}
+
+			BsonDocument doc = new BsonDocument();
+			doc.append(IK_STORAGEVALUE_KEY, new BsonInt64(((Long) lastModified.invoke(obj, EMPTY_OBJ)).longValue()));
+
+			Iterator<?> it = ((Map<?, ?>) getValue.invoke(obj, EMPTY_OBJ)).entrySet().iterator();
+			Entry<?, ?> e;
+			ObjectWrap ow;
+			BsonArray arr;
+			boolean done = false;
+			while (it.hasNext()) {
+				e = (Entry<?, ?>) it.next();
+				ow = (ObjectWrap) e.getValue();
+				if (!done && (lastModifiedItem == null || lastModifiedItem.getDeclaringClass() != ow.getClass())) {
+					lastModifiedItem = ow.getClass().getMethod("lastModified", EMPTY_CLASS);
+					done = true;
+				}
+				arr = new BsonArray();
+				arr.add(new BsonInt64(((Long) lastModifiedItem.invoke(ow, EMPTY_OBJ)).longValue()));
+				arr.add(toBsonValue(ow.getEmbededObject(), inside, allowObjectSerialisation));
+				doc.append(e.getKey().toString(), arr);
+
+			}
+			return doc;
+		}
+		catch (Exception e) {
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		}
+
 	}
 
 	private static BsonValue _toBsonValue(byte[] barr) {
@@ -391,9 +489,17 @@ public class BSON {
 		return os.toByteArray();
 	}
 
-	// BsonArray, BsonJavaScript, BsonJavaScriptWithScope,
-	// BsonNull, , BsonObjectId, BsonRegularExpression,,
-	// BsonSymbol, BsonTimestamp, BsonUndefined
+	private static void log(Exception e) {
+		Config c = CFMLEngineFactory.getInstance().getThreadConfig();
+		if (c != null) {
+			Log log = c.getLog("application");
+			if (log != null) {
+				log.error("redis", e);
+				return;
+			}
+		}
+		e.printStackTrace();
+	}
 
 	private static class ObjectInputStreamImpl extends ObjectInputStream {
 
@@ -418,4 +524,5 @@ public class BSON {
 		}
 
 	}
+
 }
