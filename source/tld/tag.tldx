@@ -61,7 +61,7 @@
 		</attribute>
 		<attribute>
 			<type>boolean</type>
-			<name>throwontimeout</name>
+			<name>throwOnTimeout</name>
 			<required>false</required>
 			<default>false</default>
 			<rtexprvalue>true</rtexprvalue>
@@ -71,7 +71,7 @@
 		</attribute>
 		<attribute>
 			<type>boolean</type>
-			<name>logontimeout</name>
+			<name>logOnTimeout</name>
 			<required>false</required>
 			<default>true</default>
 			<rtexprvalue>true</rtexprvalue>
