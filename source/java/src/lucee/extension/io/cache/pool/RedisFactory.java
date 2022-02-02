@@ -50,8 +50,13 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		Socket socket = getSocket();
 
 		InetSocketAddress serverInfo = new InetSocketAddress(host, port);
-		if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
-		else socket.connect(serverInfo);
+		try {
+			if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
+			else socket.connect(serverInfo);
+		}
+		catch (Exception e) {
+			throw new IOException("The Redis client was not able to crearte a connection to [" + host + ":" + port + "]", e);
+		}
 		Redis redis = new Redis(cl, socket);
 
 		if (password != null) {
