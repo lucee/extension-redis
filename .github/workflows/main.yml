@@ -23,7 +23,7 @@ jobs:
           # Maps port 6379 on service container to the host
           - 6379:6379
     env:
-      luceeVersion: 6.0.0.114-SNAPSHOT
+      luceeVersion: light-6.0.0.152-SNAPSHOT
 
     steps:
     - uses: actions/checkout@v2
@@ -63,6 +63,8 @@ jobs:
         execute: /bootstrap-tests.cfm
         luceeVersion: ${{ env.luceeVersion }}
         extensionDir: ${{ github.workspace }}/dist
+        testAdditional: ${{ github.workspace }}/tests
+        extensions: 8D7FB0DF-08BB-1589-FE3975678F07DB17,37C61C0A-5D7E-4256-8572639BE0CF5838 # the compress and esapi extensiona are required to run tests lucee with lucee-light      
       env:
         testLabels: redis
         REDIS_PORT: 6379
