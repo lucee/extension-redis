@@ -159,27 +159,21 @@ public class RedLock {
 
 		if (release) {
 			// slide to unlock
-			Array commands = engine.getCreationUtil().createArray();
-
 			Array cmd = engine.getCreationUtil().createArray();
 			cmd.append("eval");
 			cmd.append(" local time=redis.call('time')[1];"
 
 					+ " redis.call('LSET', ARGV[1],-1,time); "
 
+					+ " redis.call('RPOPLPUSH', ARGV[1],KEYS[1]); "
+
 			);
 			cmd.append("1");
 			cmd.append(lockNameOpen);
 			cmd.append(lockNameClose);
-			commands.append(cmd);
 
-			Array cmd2 = engine.getCreationUtil().createArray();
-			cmd2.append("RPOPLPUSH");
-			cmd2.append(lockNameClose);
-			cmd2.append(lockNameOpen);
-			commands.append(cmd2);
 			try {
-				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, commands, false, null, cacheName), null);
+				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null);
 				if (res == null || res.get(2, null) == null) {
 					pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
 				}
