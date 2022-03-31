@@ -55,7 +55,7 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 			else socket.connect(serverInfo);
 		}
 		catch (Exception e) {
-			throw new IOException("The Redis client was not able to crearte a connection to [" + host + ":" + port + "]", e);
+			throw new IOException("The Redis client was not able to create a connection to [" + host + ":" + port + "]", e);
 		}
 		Redis redis = new Redis(cl, socket);
 

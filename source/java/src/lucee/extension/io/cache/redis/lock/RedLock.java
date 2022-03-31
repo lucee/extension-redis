@@ -110,7 +110,7 @@ public class RedLock {
 
 		Array res = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
 		// we could NOT aquire a lock
-		if (res == null || !res.containsKey(2)) {
+		if (res == null || res.get(2, null) == null) {
 			// in case of a null, the expire in the last RedisCommand prolong the list expiry with no reason.
 			// this code revert back to the expire it should be by looking on the current time and subtract the
 			// last lock time
@@ -156,15 +156,36 @@ public class RedLock {
 	 * @throws PageException
 	 */
 	public void release(PageContext pc) throws PageException {
+
 		if (release) {
 			// slide to unlock
+			Array commands = engine.getCreationUtil().createArray();
+
 			Array cmd = engine.getCreationUtil().createArray();
-			cmd.append("RPOPLPUSH");
-			cmd.append(lockNameClose);
+			cmd.append("eval");
+			cmd.append(" local time=redis.call('time')[1];"
+
+					+ " redis.call('LSET', ARGV[1],-1,time); "
+
+			);
+			cmd.append("1");
 			cmd.append(lockNameOpen);
-			Object res = new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName);
-			if (res == null) {
-				pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present");
+			cmd.append(lockNameClose);
+			commands.append(cmd);
+
+			Array cmd2 = engine.getCreationUtil().createArray();
+			cmd2.append("RPOPLPUSH");
+			cmd2.append(lockNameClose);
+			cmd2.append(lockNameOpen);
+			commands.append(cmd2);
+			try {
+				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, commands, false, null, cacheName), null);
+				if (res == null || res.get(2, null) == null) {
+					pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present, mybe already expired");
+				}
+			}
+			catch (Exception e) {
+				pc.getConfig().getLog("application").error("RedLock", "could not release the lock [" + name + "], lock is not present, mybe already expired", e);
 			}
 		}
 	}
