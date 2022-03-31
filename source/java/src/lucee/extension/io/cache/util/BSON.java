@@ -210,6 +210,9 @@ public class BSON {
 		if (bv.isInt32()) {
 			return bv.asInt32().getValue();
 		}
+		if (bv.isInt64()) {
+			return bv.asInt64().getValue();
+		}
 		if (bv.isDecimal128()) {
 			return bv.asDecimal128().getValue().bigDecimalValue();
 		}
@@ -226,7 +229,6 @@ public class BSON {
 			return data;
 
 		}
-
 		throw new IOException("BSON type [" + bv.getBsonType().name() + "] is not supported yet!");
 	}
 
