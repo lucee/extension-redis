@@ -181,11 +181,11 @@ public class RedLock {
 			try {
 				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, commands, false, null, cacheName), null);
 				if (res == null || res.get(2, null) == null) {
-					pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present, mybe already expired");
+					pc.getConfig().getLog("application").info("RedLock", "could not release the lock [" + name + "], lock is not present, maybe it is already expired");
 				}
 			}
 			catch (Exception e) {
-				pc.getConfig().getLog("application").error("RedLock", "could not release the lock [" + name + "], lock is not present, mybe already expired", e);
+				pc.getConfig().getLog("application").error("RedLock", "could not release the lock [" + name + "], lock is not present, maybe it is already expired", e);
 			}
 		}
 	}
