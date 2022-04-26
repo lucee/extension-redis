@@ -2,6 +2,7 @@ package lucee.extension.io.cache.redis.lock;
 
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;
+import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -10,6 +11,8 @@ import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 
 public class RedLock {
+
+	private static final Integer ONE = Integer.valueOf(1);
 
 	private CFMLEngine engine;
 
@@ -76,19 +79,21 @@ public class RedLock {
 		Array commands = engine.getCreationUtil().createArray();
 		Array cmd1 = engine.getCreationUtil().createArray();
 		cmd1.append("eval");
-		cmd1.append("local open_len = redis.call('llen', KEYS[1]);"
+		cmd1.append("if redis.call('TTL', ARGV[1]) == -1 then "
 
-				+ " local close_len = redis.call('llen', ARGV[1]);"
+				+ " redis.call('expire', ARGV[1], '" + expires + 60 + "') end "
 
 				+ " local time=redis.call('time')[1];"
 
-				+ " if open_len	+ close_len < " + amount + " then redis.call('LPUSH', KEYS[1], time)"
+				+ " local open_len = redis.call('llen', KEYS[1]);"
+
+				+ " local close_len = redis.call('llen', ARGV[1]);"
+
+				+ " if open_len	+ close_len < " + amount + " then redis.call('LPUSH', KEYS[1], time) "
 
 				+ " elseif open_len + close_len > " + amount + " then redis.call('DEL', KEYS[1]) "
 
-				+ " elseif open_len > 0 then redis.call('LSET', KEYS[1],-1,time) end"
-
-		);
+				+ " elseif open_len > 0 then redis.call('LSET', KEYS[1],-1,time) end");
 
 		cmd1.append("1");
 		cmd1.append(lockNameOpen);
@@ -102,49 +107,34 @@ public class RedLock {
 		cmd2.append(timeoutInSeconds());
 		commands.append(cmd2);
 
-		Array cmd3 = engine.getCreationUtil().createArray();
-		cmd3.append("expire");
-		cmd3.append(lockNameClose);
-		cmd3.append(expires + "");
-		commands.append(cmd3);
+		Array resArr = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
+		release = false;
+		final boolean hasResult = resArr != null && resArr.get(2, null) != null;
 
-		Array res = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
-		// we could NOT aquire a lock
-		if (res == null || res.get(2, null) == null) {
-			// in case of a null, the expire in the last RedisCommand prolong the list expiry with no reason.
-			// this code revert back to the expire it should be by looking on the current time and subtract the
-			// last lock time
+		// we could aquire a lock
+		if (hasResult) {
 			Array cmd = engine.getCreationUtil().createArray();
-			cmd.append("eval");
-			cmd.append("local ltime=redis.call('lrange',KEYS[1],0,0);"
-
-					+ " if ltime[1] ~= nil then "
-
-					+ " local lock_remain_time = ARGV[1] - (redis.call('time')[1] - ltime[1]);"
-
-					+ " if lock_remain_time > 0 then"
-
-					+ " redis.call('expire',KEYS[1],lock_remain_time);"
-
-					+ " end end");
-			cmd.append("1");
+			cmd.append("expire");
 			cmd.append(lockNameClose);
 			cmd.append(expires + "");
 
-			new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName);
-			if (logontimeout) {
-				pc.getConfig().getLog("application").error("RedLock", "reached timeout [" + timeoutInSeconds() + "] for log [" + name + "]");
-			}
-			if (throwontimeout) {
-				throw engine.getExceptionUtil().createApplicationException("we could not aquire a log for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
-			}
-			return false; // skip body
+			if (ONE.equals(engine.getCastUtil().toInteger(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null))) release = true;
+
+			return true;
 		}
-		release = true;
-		return true;
+
+		if (logontimeout) {
+			pc.getConfig().getLog("application").error("RedLock", "reached timeout [" + timeoutInSeconds() + "] for log [" + name + "]");
+		}
+		if (throwontimeout) {
+			throw engine.getExceptionUtil().createApplicationException("we could not aquire a log for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
+		}
+		return false;
+
 	}
 
 	String timeoutInSeconds() {
+		print.e(engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d)));
 		return engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d));
 	}
 
