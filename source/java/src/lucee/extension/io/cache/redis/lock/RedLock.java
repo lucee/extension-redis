@@ -124,10 +124,10 @@ public class RedLock {
 		}
 
 		if (logontimeout) {
-			pc.getConfig().getLog("application").error("RedisLock", "reached timeout [" + timeoutInSeconds() + "] for lock [" + name + "]");
+			pc.getConfig().getLog("application").error("DistributedLock", "reached timeout [" + timeoutInSeconds() + "] for lock [" + name + "]");
 		}
 		if (throwontimeout) {
-			throw engine.getExceptionUtil().createApplicationException("Could not aquire a lock for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
+			throw engine.getExceptionUtil().createApplicationException("Could not aquire a distributed lock for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
 		}
 		return false;
 
@@ -165,11 +165,11 @@ public class RedLock {
 			try {
 				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null);
 				if (res == null || res.get(2, null) == null) {
-					pc.getConfig().getLog("application").info("RedisLock", "Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
+					pc.getConfig().getLog("application").info("DistributedLock", "Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
 				}
 			}
 			catch (Exception e) {
-				pc.getConfig().getLog("application").error("RedisLock", "Could not release the lock [" + name + "], as lock was not found, maybe it had already expired", e);
+				pc.getConfig().getLog("application").error("DistributedLock", "Could not release the lock [" + name + "], as lock was not found, maybe it had already expired", e);
 			}
 		}
 	}
