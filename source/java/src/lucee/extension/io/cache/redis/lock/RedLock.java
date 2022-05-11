@@ -124,7 +124,7 @@ public class RedLock {
 		}
 
 		if (logontimeout) {
-			pc.getConfig().getLog("application").error("RedLock", "reached timeout [" + timeoutInSeconds() + "] for log [" + name + "]");
+			pc.getConfig().getLog("application").warn("RedLock", "reached timeout [" + timeoutInSeconds() + "] for log [" + name + "]");
 		}
 		if (throwontimeout) {
 			throw engine.getExceptionUtil().createApplicationException("we could not aquire a log for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
