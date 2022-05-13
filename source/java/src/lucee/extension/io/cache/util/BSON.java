@@ -120,7 +120,6 @@ public class BSON {
 			return toBsonDocument(raw);
 		}
 		catch (Exception e) {
-			log(e);
 		}
 		return defaultValue;
 	}
@@ -261,7 +260,6 @@ public class BSON {
 				return _toBsonDocumentIKStorageValue(o, new HashSet<>(), allowObjectSerialisation);
 		}
 		catch (Exception e) {
-			log(e);
 		}
 		return defaultValue;
 	}
