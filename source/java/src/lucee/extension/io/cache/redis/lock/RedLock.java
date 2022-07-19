@@ -134,7 +134,7 @@ public class RedLock {
 	}
 
 	String timeoutInSeconds() {
-		print.e(engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d)));
+		// print.e(engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d)));
 		return engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d));
 	}
 
