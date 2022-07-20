@@ -1,5 +1,11 @@
 ## Lucee Redis Cache Extension
 
+[![Java CI](https://github.com/lucee/extension-redis/actions/workflows/main.yml/badge.svg)](https://github.com/lucee/extension-redis/actions/workflows/main.yml)
+
+Issues: https://luceeserver.atlassian.net/issues/?jql=labels%20%3D%20redis
+
+Docs: https://docs.lucee.org/categories/cache.html
+
 The redis driver is based on Jedis. While this is a very robust driver and Redis is amazing this project has to be considered in Beta stage.
 Please provide your feedback.
 
