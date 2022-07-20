@@ -1,10 +1,12 @@
 component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 
+	variables.sleepInterval = 10; // ms, used for sleep()s
+
 	public function beforeAll(){
 		defineCache();
 	}
 
-	pulbic function afterAll(){
+	public function afterAll(){
 		application action="update" caches={};
 	}
 
@@ -116,11 +118,11 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"querybuffer");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"querybuffer")).toBe(true);
 					expect(cacheGet(key:key,cacheName:"querybuffer")).toBe(val);
 					cacheDelete(key:key,cacheName:"querybuffer");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"querybuffer")).toBe(false);
 				}
 				catch(e) {
@@ -134,13 +136,13 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 				var val="Test Value from Test case";
 				
 				cachePut(key:key,value:val,cacheName:"querybuffer");
-				sleep(5);
+				sleep(variables.sleepInterval);
 				expect(cacheidexists(key:key,cacheName:"querybuffer")).toBe(true);
 				expect(cacheGetAllIds(filter:key,cacheName:"querybuffer")[1]).toBe(key);
 				expect(cacheGetAll(filter:key,cacheName:"querybuffer")[key]).toBe(val);
 
 				cacheDelete(key:key,cacheName:"querybuffer");
-				sleep(5);
+				sleep(variables.sleepInterval);
 				expect(cacheidexists(key:key,cacheName:"querybuffer")).toBe(false);
 			});
 
@@ -149,11 +151,11 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"queues");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"queues")).toBe(true);
 					expect(cacheGet(key:key,cacheName:"queues")).toBe(val);
 					cacheDelete(key:key,cacheName:"queues");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"queues")).toBe(false);
 				}
 				catch(e) {
@@ -167,11 +169,11 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"sessionstorage");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"sessionstorage")).toBe(true);
 					expect(cacheGet(key:key,cacheName:"sessionstorage")).toBe(val);
 					cacheDelete(key:key,cacheName:"sessionstorage");
-					sleep(5);
+					sleep(variables.sleepInterval);
 					expect(cacheidexists(key:key,cacheName:"sessionstorage")).toBe(false);
 				}
 				catch(e) {
