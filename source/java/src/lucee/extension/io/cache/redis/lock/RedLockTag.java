@@ -90,20 +90,18 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 
 	@Override
 	public void doCatch(Throwable t) throws Throwable {
-		// print.e("doCatch");
 		throw t;
 	}
 
 	@Override
 	public int doEndTag() throws JspException {
-		// print.e("doEndTag");
 		return EVAL_PAGE;
 	}
 
 	/**
 	 * @param hasBody
 	 */
-	public void hasBody(boolean hasBody) {// print.out("hasBody"+hasBody);
+	public void hasBody(boolean hasBody) {
 		// this.hasBody=hasBody;
 	}
 

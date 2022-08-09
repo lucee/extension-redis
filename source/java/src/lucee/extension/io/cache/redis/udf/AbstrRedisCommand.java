@@ -172,14 +172,12 @@ public abstract class AbstrRedisCommand extends BIF implements Function {
 						call(pc, ON_ERROR, new Object[] { eng.getCastUtil().toPageException(e).getCatchBlock(config) });
 					}
 					catch (Exception ee) {
-						ee.printStackTrace();// TODO remove this line
 						config.getLog("application").error("redisCommand", ee);
 					}
 				}
 			}
 			finally {
 				if (pc != null) eng.releasePageContext(pc, true);
-				// TODO release PC
 			}
 		}
 

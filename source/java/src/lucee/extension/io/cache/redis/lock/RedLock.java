@@ -2,7 +2,6 @@ package lucee.extension.io.cache.redis.lock;
 
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;
-import lucee.extension.io.cache.util.print;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -134,7 +133,6 @@ public class RedLock {
 	}
 
 	String timeoutInSeconds() {
-		// print.e(engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d)));
 		return engine.getCastUtil().toString((((int) (timeout / 10L)) / 100d));
 	}
 
@@ -165,7 +163,8 @@ public class RedLock {
 			try {
 				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null);
 				if (res == null || res.get(2, null) == null) {
-					pc.getConfig().getLog("application").info("DistributedLock", "Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
+					pc.getConfig().getLog("application").info("DistributedLock",
+							"Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
 				}
 			}
 			catch (Exception e) {

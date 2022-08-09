@@ -774,7 +774,6 @@ public class RedisCache extends CacheSupport implements Command {
 							}
 						}
 						catch (Exception e) {
-							e.printStackTrace();
 							throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
 						}
 					}
@@ -951,8 +950,6 @@ public class RedisCache extends CacheSupport implements Command {
 			while (true) {
 				NearCacheEntry entry;
 				try {
-
-					// print.e("- run:start:" + System.currentTimeMillis());
 					while ((entry = entries.poll()) != null) {
 						current = entry.count();
 						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
@@ -960,7 +957,6 @@ public class RedisCache extends CacheSupport implements Command {
 							tokenAddToCache.notifyAll();
 						}
 					}
-					// print.e("- run:done:" + System.currentTimeMillis());
 					synchronized (tokenAddToNear) {
 						if (entries.isEmpty()) tokenAddToNear.wait();
 					}
@@ -969,7 +965,6 @@ public class RedisCache extends CacheSupport implements Command {
 					if (cache.log != null) cache.log.error("redis-cache", e);
 					synchronized (this) {
 						try {
-							// print.e("- wait!!!");
 							this.wait(1000); // slow down in case of an issue
 						}
 						catch (Exception ie) {

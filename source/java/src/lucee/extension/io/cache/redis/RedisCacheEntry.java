@@ -42,7 +42,8 @@ public class RedisCacheEntry implements CacheEntry {
 				try {
 					debObj = cache.getDebugObject(cache.getConnection(), bkey);
 				}
-				catch (IOException e) {}
+				catch (IOException e) {
+				}
 			}
 		}
 		return debObj;
@@ -87,9 +88,6 @@ public class RedisCacheEntry implements CacheEntry {
 	@Override
 	public Struct getCustomInfo() {
 		Struct metadata = CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
-		/*
-		 * try { metadata.set("hits", hitCount()); } catch (PageException e) { e.printStackTrace(); }
-		 */
 		return metadata;
 	}
 
