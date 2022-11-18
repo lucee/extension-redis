@@ -21,8 +21,8 @@ public class CacheUtil {
 		info.setEL("last_hit", ce.lastHit());
 		info.setEL("last_modified", ce.lastModified());
 
-		info.setEL("hit_count", new Double(ce.hitCount()));
-		info.setEL("size", new Double(ce.size()));
+		info.setEL("hit_count", Double.valueOf(ce.hitCount()));
+		info.setEL("size", Double.valueOf(ce.size()));
 
 		info.setEL("idle_time_span", toTimespan(ce.idleTimeSpan()));
 		info.setEL("live_time_span", toTimespan(ce.liveTimeSpan()));
@@ -34,7 +34,7 @@ public class CacheUtil {
 		Struct info = CFMLEngineFactory.getInstance().getCreationUtil().createStruct();
 		try {
 			long value = c.hitCount();
-			if (value >= 0) info.setEL("hit_count", new Double(value));
+			if (value >= 0) info.setEL("hit_count", Double.valueOf(value));
 		}
 		catch (Exception ioe) {
 			// simply ignore
@@ -42,7 +42,7 @@ public class CacheUtil {
 
 		try {
 			long value = c.missCount();
-			if (value >= 0) info.setEL("miss_count", new Double(value));
+			if (value >= 0) info.setEL("miss_count", Double.valueOf(value));
 		}
 		catch (Exception ioe) {
 			// simply ignore
