@@ -31,7 +31,7 @@ public abstract class CacheSupport implements Cache {
 		while (it.hasNext()) {
 			key = it.next();
 			entry = getQuiet(key, null);
-			if (all || filter.accept(entry)) list.add(key);
+			if (entry != null && (all || filter.accept(entry))) list.add(key);
 		}
 		return list;
 	}
@@ -44,7 +44,7 @@ public abstract class CacheSupport implements Cache {
 		CacheEntry entry;
 		while (it.hasNext()) {
 			entry = it.next();
-			if (entry != null && filter.accept(entry)) {
+			if (entry != null && (filter == null || filter.accept(entry))) {
 				list.add(entry);
 			}
 		}
@@ -65,7 +65,7 @@ public abstract class CacheSupport implements Cache {
 		while (it.hasNext()) {
 			key = it.next();
 			entry = getQuiet(key, null);
-			if (filter.accept(entry)) list.add(entry.getValue());
+			if (entry != null && (filter == null || filter.accept(entry))) list.add(entry.getValue());
 		}
 		return list;
 	}
@@ -85,7 +85,7 @@ public abstract class CacheSupport implements Cache {
 		while (it.hasNext()) {
 			key = it.next();
 			entry = getQuiet(key, null);
-			if (filter == null || filter.accept(entry)) {
+			if (entry != null && (filter == null || filter.accept(entry))) {
 				remove(key);
 				count++;
 			}
