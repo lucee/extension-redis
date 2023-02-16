@@ -150,7 +150,7 @@ public class Coder {
 	}
 
 	public static boolean isGzip(byte[] barr) throws IOException {
-		return barr[0] == GZIP0 && barr[1] == GZIP1;
+		return barr.length > 2 && barr[0] == GZIP0 && barr[1] == GZIP1;
 
 		//
 	}
