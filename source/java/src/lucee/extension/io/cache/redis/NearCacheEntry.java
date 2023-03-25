@@ -17,12 +17,27 @@ public class NearCacheEntry implements CacheEntry {
 	private byte[] serialized;
 	private long count;
 
+	/**
+	 * Some optional callback to be performed immediately after the write to cache is complete.
+	 * Can be null, meaning "so such action".
+	 */
+	public final Runnable onComplete;
+
 	public NearCacheEntry(byte[] key, Object val, int exp, long count) {
 		this.key = key;
 		this.val = val;
 		this.exp = exp;
 		this.created = System.currentTimeMillis();
 		this.count = count;
+		this.onComplete = null;
+	}
+	public NearCacheEntry(byte[] key, Object val, int exp, long count, Runnable onComplete) {
+		this.key = key;
+		this.val = val;
+		this.exp = exp;
+		this.created = System.currentTimeMillis();
+		this.count = count;
+		this.onComplete = onComplete;
 	}
 
 	@Override

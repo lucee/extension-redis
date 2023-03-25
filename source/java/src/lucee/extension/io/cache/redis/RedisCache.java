@@ -62,7 +62,7 @@ public class RedisCache extends CacheSupport implements Command {
 	private int port;
 
 	private String username;
-	private final boolean async = true;
+	private boolean async = true;
 
 	private Storage storage = new Storage(this);
 
@@ -144,6 +144,15 @@ public class RedisCache extends CacheSupport implements Command {
 		defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
 
 		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
+
+		//
+		// "default" behavior is async
+		// If config's "synchronous" value is missing or is explicitly false, we'll get async=true;
+		// otherwise, "synchronous" was passed and was cftruthy, and we'll get async=false
+		//
+		final boolean synchronous = caster.toBooleanValue(arguments.get("synchronous", null), false);
+		async = !synchronous;
+
 		String logName = caster.toString(arguments.get("log", null), null);
 		if (!Util.isEmpty(logName, true) && config != null) {
 			logName = logName.trim();
@@ -938,10 +947,43 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 		}
 
-		public void put(byte[] bkey, Object val, int exp, long count) {
-			entries.add(new NearCacheEntry(bkey, val, exp, count));
-			synchronized (tokenAddToNear) {
-				tokenAddToNear.notifyAll();
+		/**
+		 * If the extension is configured for asynchronous behavior (the default)
+		 * then this method can return prior to the write to cache completing.
+		 * In synchronous mode, we block until the write completes.
+		 */
+		public void put(byte[] bkey, Object val, int exp, long count) throws IOException {
+			if (cache.async) {
+				entries.add(new NearCacheEntry(bkey, val, exp, count));
+				synchronized (tokenAddToNear) {
+					tokenAddToNear.notifyAll();
+				}
+			}
+			else {
+				final Object sync = new Object();
+				entries.add(
+					new NearCacheEntry(
+						bkey, val, exp, count,
+						new Runnable() {
+							public void run() {
+								synchronized(sync) {
+									sync.notifyAll();
+								}
+							}
+						}
+					)
+				);
+				synchronized (tokenAddToNear) {
+					synchronized (sync) {
+						tokenAddToNear.notifyAll(); // wake up redis worker thread
+						try {
+							sync.wait(5000/*ms*/); // wait for worker thread to say "ok it's in cache"
+						}
+						catch (InterruptedException e) {
+							throw this.engine.getExceptionUtil().toIOException(e);
+						}
+					}
+				}
 			}
 		}
 
@@ -955,6 +997,9 @@ public class RedisCache extends CacheSupport implements Command {
 						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();
+							if (entry.onComplete != null) {
+								entry.onComplete.run();
+							}
 						}
 					}
 					synchronized (tokenAddToNear) {
