@@ -19,7 +19,7 @@ public class NearCacheEntry implements CacheEntry {
 
 	/**
 	 * Some optional callback to be performed immediately after the write to cache is complete.
-	 * Can be null, meaning "so such action".
+	 * Can be null, meaning "there is no callback to run".
 	 */
 	public final Runnable onComplete;
 
