@@ -147,10 +147,10 @@ public class RedisCache extends CacheSupport implements Command {
 
 		//
 		// "default" behavior is async
-		// If config's "synchronous" value is missing or is explicitly false, we'll get async=true;
-		// otherwise, "synchronous" was passed and was cftruthy, and we'll get async=false
+		// If config's "synchronousPut" value is missing or is explicitly false, we'll get async=true;
+		// otherwise, "synchronousPut" was passed and was cftruthy, and we'll get async=false
 		//
-		final boolean synchronous = caster.toBooleanValue(arguments.get("synchronous", null), false);
+		final boolean synchronous = caster.toBooleanValue(arguments.get("synchronousPut", null), false);
 		async = !synchronous;
 
 		String logName = caster.toString(arguments.get("log", null), null);
