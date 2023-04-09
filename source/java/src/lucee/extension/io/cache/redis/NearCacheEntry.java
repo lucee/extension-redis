@@ -25,6 +25,25 @@ public class NearCacheEntry implements CacheEntry {
 		this.count = count;
 	}
 
+	private NearCacheEntry(byte[] key, Object val, int exp, long count, byte[] serialized) {
+		this.key = key;
+		this.val = val;
+		this.exp = exp;
+		this.created = System.currentTimeMillis();
+		this.count = count;
+		this.serialized = serialized;
+	}
+
+	/**
+	 * copy this object, also copying the underlying object as-if it had been materialized from cache (in particular, the underlying object
+	 * is copied such that is no longer a reference to the original underlying object). Note that the serialized byte[] is shared across instances of
+	 * copied NearCacheEntries.
+	 */
+	public NearCacheEntry copy(ClassLoader cl) throws IOException {
+		byte[] bytes = serialized();
+		return new NearCacheEntry(key, Coder.evaluate(cl, bytes), exp, count, bytes);
+	}
+
 	@Override
 	public Date created() {
 		return new Date(created);
