@@ -247,7 +247,7 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
-				return val;
+				return val.copy(cl);
 			}
 			storage.doJoin(cnt, true);
 		}
@@ -341,7 +341,12 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
-				return val;
+				try {
+					return val.copy(cl);
+				}
+				catch (IOException e) {
+					return defaultValue;
+				}
 			}
 			storage.doJoin(cnt, true);
 		}
