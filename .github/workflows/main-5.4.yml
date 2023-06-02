@@ -23,7 +23,7 @@ jobs:
           # Maps port 6379 on service container to the host
           - 6379:6379
     env:
-      luceeVersion: light-6.0.0.419-SNAPSHOT
+      luceeVersion: light-5.4.0.66-SNAPSHOT
 
     steps:
     - uses: actions/checkout@v3
@@ -63,6 +63,7 @@ jobs:
         execute: /bootstrap-tests.cfm
         luceeVersion: ${{ env.luceeVersion }}
         extensionDir: ${{ github.workspace }}/dist
+        extensions:
       env:
         testLabels: redis
         testAdditional: ${{ github.workspace }}/tests
