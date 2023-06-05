@@ -3,6 +3,6 @@ Export-Package: lucee.extension.io.cache.redis,
  lucee.extension.io.cache.redis.simple,
  lucee.extension.io.cache.redis.udf
 Bundle-ManifestVersion: 2
-Require-Bundle: org.lucee.aws-java-sdk-secretsmanager-all;bundle-version=1.12.454,
+Require-Bundle: org.lucee.aws-java-sdk-secretsmanager-all;bundle-version=1.12.456,
  org.mongodb.bson;bundle-version=4.2.3,
  org.apache.commons.commons-pool2;bundle-version=2.8.1

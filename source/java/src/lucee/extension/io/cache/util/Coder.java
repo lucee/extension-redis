@@ -90,6 +90,26 @@ public class Coder {
 			ois = new ObjectInputStreamImpl(cl, bais);
 			return ois.readObject();
 		}
+		catch (ClassNotFoundException cnfe) {
+			String className = cnfe.getMessage();
+			if (!Util.isEmpty(className, true)) {
+				Class<?> clazz = CFMLEngineFactory.getInstance().getClassUtil().loadClass(className.trim());
+				bais = new ByteArrayInputStream(data);
+				ois = new ObjectInputStreamImpl(clazz.getClassLoader(), bais);
+				try {
+					return ois.readObject();
+				}
+				catch (ClassNotFoundException e) {
+					throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+				}
+			}
+			try {
+				return toString(data);
+			}
+			catch (Exception ee) {
+				throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(cnfe);
+			}
+		}
 		// happens when the object is not ObjectOutputstream serialized
 		catch (Exception e) {
 			try {
@@ -144,8 +164,21 @@ public class Coder {
 			objectIn.close();
 			return val;
 		}
-		catch (ClassNotFoundException e) {
-			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		catch (ClassNotFoundException cnfe) {
+			String className = cnfe.getMessage();
+			if (!Util.isEmpty(className, true)) {
+				Class<?> clazz = CFMLEngineFactory.getInstance().getClassUtil().loadClass(className.trim());
+				bais = new ByteArrayInputStream(bytes);
+				objectIn = new ObjectInputStreamImpl(clazz.getClassLoader(), bais);
+				try {
+					return objectIn.readObject();
+				}
+				catch (ClassNotFoundException e) {
+					throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+				}
+			}
+
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(cnfe);
 		}
 	}
 

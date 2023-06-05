@@ -465,8 +465,20 @@ public class BSON {
 			ois = new ObjectInputStreamImpl(cl, bais);
 			return ois.readObject();
 		}
-		catch (ClassNotFoundException e) {
-			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+		catch (ClassNotFoundException cnfe) {
+			String className = cnfe.getMessage();
+			if (!Util.isEmpty(className, true)) {
+				Class<?> clazz = CFMLEngineFactory.getInstance().getClassUtil().loadClass(className.trim());
+				bais = new ByteArrayInputStream(data);
+				ois = new ObjectInputStreamImpl(clazz.getClassLoader(), bais);
+				try {
+					return ois.readObject();
+				}
+				catch (ClassNotFoundException e) {
+					throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(e);
+				}
+			}
+			throw CFMLEngineFactory.getInstance().getExceptionUtil().toIOException(cnfe);
 		}
 		finally {
 			Util.closeEL(ois);
