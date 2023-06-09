@@ -23,7 +23,7 @@ jobs:
           # Maps port 6379 on service container to the host
           - 6379:6379
     env:
-      luceeVersion: light-6.0.0.419-SNAPSHOT
+      luceeVersion: light-6.0.0.451-BETA
 
     steps:
     - uses: actions/checkout@v3
