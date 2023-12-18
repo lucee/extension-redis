@@ -84,10 +84,6 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 	}
 
-	public static void init(Config config, String[] cacheName, Struct[] arguments) {
-		// Not used at the moment
-	}
-
 	@Override
 	public void init(Config config, String cacheName, Struct arguments) throws IOException {
 		init(config, arguments);

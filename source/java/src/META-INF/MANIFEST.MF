@@ -3,7 +3,14 @@ Export-Package: lucee.extension.io.cache.redis,
  lucee.extension.io.cache.redis.simple,
  lucee.extension.io.cache.redis.udf
 Bundle-ManifestVersion: 2
-Require-Bundle: org.mongodb.bson;bundle-version=4.2.3,
- org.apache.commons.commons-pool2;bundle-version=2.8.1,
- org.lucee.aws-secretsmanager;bundle-version=1.12.348,
- org.lucee.aws-core;bundle-version=1.12.348
+Require-Bundle: org.lucee.aws-java-sdk-secretsmanager-all;bundle-version="[1.12.456,2)",
+ org.mongodb.bson;bundle-version="[4.2.3,5)",
+ org.apache.commons.commons-pool2;bundle-version="[2.8.1,3)",
+ com.fasterxml.jackson.core.jackson-annotations;bundle-version="[2.15.0,3)",
+ com.fasterxml.jackson.core.jackson-core;bundle-version="[2.15.0,3)",
+ com.fasterxml.jackson.core.jackson-databind;bundle-version="[2.15.0,3)",
+ com.fasterxml.jackson.dataformat.jackson-dataformat-cbor;bundle-version="[2.15.0,3)",
+ bouncycastle.prov;bundle-version="[1.38.0,2)",
+ bouncycastle.tsp;bundle-version="[1.38.0,2)",
+ bouncycastle.mail;bundle-version="[1.38.0,2)",
+ software.amazon.ion.java;bundle-version="[1.0.2,2)"

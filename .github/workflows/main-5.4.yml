@@ -1,7 +1,7 @@
 # This workflow will build a Java project with Ant
 # For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-ant
 
-name: Java CI - Lucee 6
+name: Java CI - Lucee 5.4
 
 on: [push, pull_request, workflow_dispatch]
 
@@ -23,7 +23,7 @@ jobs:
           # Maps port 6379 on service container to the host
           - 6379:6379
     env:
-      luceeVersion: light-6.0.0.451-BETA
+      luceeVersion: light-5.4.3.2
 
     steps:
     - uses: actions/checkout@v3
@@ -63,6 +63,7 @@ jobs:
         execute: /bootstrap-tests.cfm
         luceeVersion: ${{ env.luceeVersion }}
         extensionDir: ${{ github.workspace }}/dist
+        extensions:
       env:
         testLabels: redis
         testAdditional: ${{ github.workspace }}/tests
