@@ -48,7 +48,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
         describe("My Redis Extension Tests", function() {
 
             it("can increment Redis key value using Float", function() {
-				keyName = "test:float";
+				keyName = "test:float"&hash(createUniqueId()&":"&server.lucee.version,"quick");
                 redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
 				var Float = createObject("java", "java.lang.Float");
                 var f = Float.parseFloat("100");
@@ -58,7 +58,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Double", function() {
-                keyName = "test:double";
+                keyName = "test:double"&hash(createUniqueId()&":"&server.lucee.version,"quick");
                 redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
 				var Double = createObject("java", "java.lang.Double");
                 var d = Double.parseDouble("100");
@@ -68,7 +68,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Short", function() {
-                keyName = "test:short";
+                keyName = "test:short"&hash(createUniqueId()&":"&server.lucee.version,"quick");
                 redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
 				var Short = createObject("java", "java.lang.Short");
                 var s = Short.parseShort("100");
@@ -78,7 +78,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Integer", function() {
-                keyName = "test:int";
+                keyName = "test:int"&hash(createUniqueId()&":"&server.lucee.version,"quick");
                 redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
 				var Integer = createObject("java", "java.lang.Integer");
                 var i = Integer.parseInt("100");
@@ -88,7 +88,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Long", function() {
-                keyName = "test:long";
+                keyName = "test:long"&hash(createUniqueId()&":"&server.lucee.version,"quick");
                 redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
 				var Long = createObject("java", "java.lang.Long");
                 var l = Long.parseLong("100");

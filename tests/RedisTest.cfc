@@ -114,7 +114,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 		describe( "Redis tests", function() {
 			
 			it( title='test the Redis Cache cachePut,cacheidexists,cacheGet,cacheDelete  [queryBuffer] ', body=function( currentSpec ) {
-				var key="k"&createUniqueId();	
+				var key="k"&hash(createUniqueId()&":"&server.lucee.version,"quick");	
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"querybuffer");
@@ -132,7 +132,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			});
 
 			it( title='test the Redis Cache cachePut,cacheidexists,cacheGetAll,cacheGetAllIds,cacheDelete  [queryBuffer] ', body=function( currentSpec ) {
-				var key="k"&createUniqueId();	
+				var key="k"&hash(createUniqueId()&":"&server.lucee.version,"quick");	
 				var val="Test Value from Test case";
 				
 				cachePut(key:key,value:val,cacheName:"querybuffer");
@@ -147,7 +147,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			});
 
 			it( title='test the Redis Cache cachePut,cacheidexists,cacheGet,cacheDelete  [queues] ', body=function( currentSpec ) {
-				var key="k"&createUniqueId();	
+				var key="k"&hash(createUniqueId()&":"&server.lucee.version,"quick");	
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"queues");
@@ -165,7 +165,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			});
 
 			it( title='test the Redis Cache cachePut,cacheidexists,cacheGet,cacheDelete  [sessionstorage] ', body=function( currentSpec ) {
-				var key="k"&createUniqueId();	
+				var key="k"&hash(createUniqueId()&":"&server.lucee.version,"quick");	
 				var val="Test Value from Test case";
 				try {
 					cachePut(key:key,value:val,cacheName:"sessionstorage");
