@@ -1,7 +1,5 @@
 component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 
-	variables.sleepInterval = 10; // ms, used for sleep()s
-
 	public function beforeAll(){
 		defineCache();
         // Setup code if needed
@@ -48,13 +46,49 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 	}
 
 
-	function run( testResults , testBox ) {
-		describe( "Redis tests", function() {
-			
+	function run() {
+        describe("My Redis Extension Tests", function() {
 
+            it("can increment Redis key value using Float", function() {
+                var Float = createObject("java", "java.lang.Float");
+                var f = Float.parseFloat("100");
+                redisCommand(arguments: ["INCRBY", keyName, f], cache: cacheName);
+                var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
+                expect(result).toBe(200); // Or your expected result
+            });
 
+            it("can increment Redis key value using Double", function() {
+                var Double = createObject("java", "java.lang.Double");
+                var d = Double.parseDouble("100");
+                redisCommand(arguments: ["INCRBY", keyName, d], cache: cacheName);
+                var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
+                expect(result).toBe(200); // Or your expected result
+            });
 
+            it("can increment Redis key value using Short", function() {
+                var Short = createObject("java", "java.lang.Short");
+                var s = Short.parseShort("100");
+                redisCommand(arguments: ["INCRBY", keyName, s], cache: cacheName);
+                var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
+                expect(result).toBe(200); // Or your expected result
+            });
 
-		});
-	}
+            it("can increment Redis key value using Integer", function() {
+                var Integer = createObject("java", "java.lang.Integer");
+                var i = Integer.parseInt("100");
+                redisCommand(arguments: ["INCRBY", keyName, i], cache: cacheName);
+                var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
+                expect(result).toBe(200); // Or your expected result
+            });
+
+            it("can increment Redis key value using Long", function() {
+                var Long = createObject("java", "java.lang.Long");
+                var l = Long.parseLong("100");
+                var res = redisCommand(arguments: ["INCRBY", keyName, l], cache: cacheName);
+                var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
+                expect(result).toBe(200); // Or your expected result
+            });
+
+        });
+    }
 }
