@@ -4,10 +4,8 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 		defineCache();
         // Setup code if needed
         cacheName = "testRedis";
-        keyName = "test:intKey";
+        
         initialValue = 100;
-        redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
-    
 	}
 
 	public function afterAll(){
@@ -50,7 +48,9 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
         describe("My Redis Extension Tests", function() {
 
             it("can increment Redis key value using Float", function() {
-                var Float = createObject("java", "java.lang.Float");
+				keyName = "test:float";
+                redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
+				var Float = createObject("java", "java.lang.Float");
                 var f = Float.parseFloat("100");
                 redisCommand(arguments: ["INCRBY", keyName, f], cache: cacheName);
                 var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
@@ -58,7 +58,9 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Double", function() {
-                var Double = createObject("java", "java.lang.Double");
+                keyName = "test:double";
+                redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
+				var Double = createObject("java", "java.lang.Double");
                 var d = Double.parseDouble("100");
                 redisCommand(arguments: ["INCRBY", keyName, d], cache: cacheName);
                 var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
@@ -66,7 +68,9 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Short", function() {
-                var Short = createObject("java", "java.lang.Short");
+                keyName = "test:short";
+                redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
+				var Short = createObject("java", "java.lang.Short");
                 var s = Short.parseShort("100");
                 redisCommand(arguments: ["INCRBY", keyName, s], cache: cacheName);
                 var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
@@ -74,7 +78,9 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Integer", function() {
-                var Integer = createObject("java", "java.lang.Integer");
+                keyName = "test:int";
+                redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
+				var Integer = createObject("java", "java.lang.Integer");
                 var i = Integer.parseInt("100");
                 redisCommand(arguments: ["INCRBY", keyName, i], cache: cacheName);
                 var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
@@ -82,7 +88,9 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
             });
 
             it("can increment Redis key value using Long", function() {
-                var Long = createObject("java", "java.lang.Long");
+                keyName = "test:long";
+                redisCommand(arguments: ["SET", keyName, initialValue], cache: cacheName);
+				var Long = createObject("java", "java.lang.Long");
                 var l = Long.parseLong("100");
                 var res = redisCommand(arguments: ["INCRBY", keyName, l], cache: cacheName);
                 var result = redisCommand(arguments: ["GET", keyName], cache: cacheName);
