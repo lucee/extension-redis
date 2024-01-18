@@ -32,7 +32,7 @@
         echo(getTickCount()-start);
     }
     catch(e) {
-        systemOutput(e,1,1)
+        //systemOutput(e,1,1)
         echo("exception;");
         echo(getTickCount()-start);
     }
