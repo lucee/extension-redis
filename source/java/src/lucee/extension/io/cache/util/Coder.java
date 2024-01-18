@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.nio.charset.Charset;
+import java.text.DecimalFormat;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -14,6 +16,7 @@ import java.util.zip.GZIPOutputStream;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
 
+import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 
@@ -21,6 +24,12 @@ public class Coder {
 
 	private static final byte GZIP0 = (byte) 0x1f;
 	private static final byte GZIP1 = (byte) 0x8b;
+
+	private static DecimalFormat ff = (DecimalFormat) DecimalFormat.getInstance(Locale.US);
+	private static CFMLEngine eng;
+	static {
+		ff.applyLocalizedPattern("#.#######");
+	}
 
 	private static byte[] OBJECT_STREAM_HEADER = new byte[] { -84, -19, 0, 5 };
 
@@ -133,11 +142,32 @@ public class Coder {
 	}
 
 	public static byte[] serialize(Object value) throws IOException {
+		if (eng == null) {
+			// this fails when executed outside a Lucee engine
+			try {
+				eng = CFMLEngineFactory.getInstance();
+			}
+			catch (Exception e) {
+			}
+		}
 		if (value instanceof CharSequence) {
-			return toBytes(value.toString());
+			try {
+				return toBytes(eng.getCastUtil().toString(value));
+			}
+			catch (Exception e) {
+				return toBytes(value.toString());
+			}
 		}
 		if (value instanceof Number) {
-			return toBytes(value.toString());
+			if (value instanceof Float) { // avoid bug in older Lucee version
+				return toBytes(toString(((Float) value).floatValue()));
+			}
+			try {
+				return toBytes(eng.getCastUtil().toString(value));
+			}
+			catch (Exception e) {
+				return toBytes(value.toString());
+			}
 		}
 
 		BsonDocument doc = BSON.toBsonDocument(value, false, null);
@@ -186,4 +216,13 @@ public class Coder {
 		return barr != null && barr.length > 1 && barr[0] == GZIP0 && barr[1] == GZIP1;
 	}
 
+	private static String toString(float f) {
+		long l = (long) f;
+		if (l == f) return Long.toString(l, 10);
+
+		if (f > l && (f - l) < 0.000000000001) return Long.toString(l, 10);
+		if (l > f && (l - f) < 0.000000000001) return Long.toString(l, 10);
+
+		return ff.format(f);
+	}
 }
