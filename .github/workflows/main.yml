@@ -63,6 +63,7 @@ jobs:
         webroot: ${{ github.workspace }}/lucee/test
         execute: /bootstrap-tests.cfm
         luceeVersion: ${{ env.luceeVersion }}
+        luceeVersionQuery: ${{ env.luceeVersionQuery }}
         extensionDir: ${{ github.workspace }}/dist
       env:
         testLabels: redis
