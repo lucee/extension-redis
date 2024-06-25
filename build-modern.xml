@@ -30,7 +30,7 @@ version: "${bundleversion}${build.number}${bundleversion_appendix}"
 id: "${id}"
 name: "${label}"
 description: "${description}"
-start-bundles: false
+start-bundles: true
 release-type: ${releaseType}
 cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'},{'class':'${class_sen}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
 </echo>
