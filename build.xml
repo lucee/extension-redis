@@ -2,41 +2,69 @@
 <project default="clean" basedir="." name="redis-extension">
 	<description>Build Redis Extension</description>
 
-  <property name="fld" location="source/fld"/>
-  <property name="tld" location="source/tld"/>
+	<property name="fld" location="source/fld"/>
+	<property name="tld" location="source/tld"/>
+	<property name="lib" location="source/java/lib"/>
+	<property name="src" location="source/java/src"/>
+	<property name="temp" location="temp"/>
+	<property name="build" location="build"/>
+	<property name="dist" location="target"/>
 
-	<import file="build-compile.xml"/>
+	<path id="classpath">
+		<fileset dir="${lib}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
 
-  <scriptdef name="replace" language="javascript">
-     <attribute name="haystack" />
-     <attribute name="needle" />
-     <attribute name="repl" />
-     <attribute name="property" />
-     <![CDATA[
-      var text = attributes.get("haystack");
-      var needle = attributes.get("needle");
-      var repl = attributes.get("repl");
-      text=text.trim();
+	<target name="init">
 
-      var regex = new RegExp(needle,'g');
-      text=text.replace(regex,repl);
-      project.setProperty(attributes.get("property"), text);
-     ]]>
-  </scriptdef>
+		<!-- Create the time stamp -->
+		<tstamp/>
 
+		<delete dir="${temp}"/>
+		<delete dir="${dist}"/>
+
+		<!-- Create the build directory structure used by compile -->
+		<mkdir dir="${temp}"/>
+		<mkdir dir="${temp}/classes"/>
+		<mkdir dir="${temp}/jars"/>
+		<mkdir dir="${dist}"/>
+
+
+		<tstamp>
+			<format property="NOW" pattern="yyyy-MM-dd HH:mm:ss" />
+		</tstamp>
+	</target>
+
+	<target name="compile" depends="init" description="compile the source " >
+
+		<javac srcdir="${src}" target="11" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
+			<classpath refid="classpath" />
+		</javac>
+
+		<jar jarfile="${temp}/jars/${bundlename}-${bundleversion}.jar" basedir="${temp}/classes" manifest="${src}/META-INF/MANIFEST.MF">
+			<manifest>
+				<attribute name="Bundle-Version" value="${bundleversion}"/>
+				<attribute name="Built-Date" value="${NOW}"/>
+				<attribute name="Bundle-SymbolicName" value="${bundlename}"/>
+			</manifest>
+		</jar>
+
+		<delete dir="${temp}/classes"/>
+	</target>
 	<target name="dist" depends="compile" description="copy source file to temp" >
 
 
 		<!-- Manifest of the extension -->
 		<echo file="${dist}/extension2/META-INF/MANIFEST.MF">Manifest-Version: 1.0
 Built-Date: ${NOW}
-version: "${bundleversion}${build.number}${bundleversion_appendix}"
+version: "${bundleversion}"
 id: "${id}"
 name: "${label}"
 description: "${description}"
 start-bundles: false
 release-type: ${releaseType}
-cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}${build.number}${bundleversion_appendix}'}]"
+cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}'}]"
 </echo>
 
 
@@ -50,18 +78,33 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 		</copy>
 
 
-	    <!-- copy the tlds necessary -->
-	    <loadfile property="cntTLD1" srcFile="${tld}/tag.tldx" />
-	    <replace haystack="${cntTLD1}" needle="{bundle-name}" repl="${bundlename}" property="cntTLD2"/>
-	    <replace haystack="${cntTLD2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="cntTLD3"/>
-	    <echo message="${cntTLD3}" file="${dist}/extension2/tlds/lucee-redis.tldx"/>
+	   <!-- copy the tlds necessary -->
+	    <copy file="${tld}/tag.tldx" tofile="${dist}/extension2/tlds/lucee-redis.tldx" />
+	    <replaceregexp 
+	      file="${dist}/extension2/tlds/lucee-redis.tldx" 
+	      match="\{bundle-name\}" 
+	      replace="${bundlename}" 
+	      byline="true"/>
+	    <replaceregexp 
+	      file="${dist}/extension2/tlds/lucee-redis.tldx" 
+	      match="\{bundle-version\}" 
+	      replace="${bundleversion}" 
+	      byline="true"/>
 
 
-		<!-- copy the flds necessary -->
-	    <loadfile property="cntFLD1" srcFile="${fld}/function.fld" />
-	    <replace haystack="${cntFLD1}" needle="{bundle-name}" repl="${bundlename}" property="cntFLD2"/>
-	    <replace haystack="${cntFLD2}" needle="{bundle-version}" repl="${bundleversion}${build.number}${bundleversion_appendix}" property="cntFLD3"/>
-	    <echo message="${cntFLD3}" file="${dist}/extension2/flds/lucee-redis.fld"/>
+	   <!-- copy the flds necessary -->
+	    <copy file="${fld}/function.fld" tofile="${dist}/extension2/flds/lucee-redis.fld" />
+	    <replaceregexp 
+	      file="${dist}/extension2/flds/lucee-redis.fld" 
+	      match="\{bundle-name\}" 
+	      replace="${bundlename}" 
+	      byline="true"/>
+	    <replaceregexp 
+	      file="${dist}/extension2/flds/lucee-redis.fld" 
+	      match="\{bundle-version\}" 
+	      replace="${bundleversion}" 
+	      byline="true"/>
+
 
 
 		<!-- copy the jar just build -->
@@ -70,17 +113,30 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 				<include name="**/*.jar"/>
 			</fileset>
 		</copy>
-		<move
-			file="${dist}/extension2/jars/lucee.extension.${codename}.jar"
-			tofile="${dist}/extension2/jars/lucee.extension.${codename}-${bundleversion}${build.number}${bundleversion_appendix}.jar"/>
 
 
 		<!-- Redis.cfc -->
-		<loadfile property="content1" srcFile="${build}/context/admin/cdriver/${camelname}.cfc" />
-		<replace haystack="${content1}" needle="{class}" repl="${class}" property="content2"/>
-		<replace haystack="${content2}" needle="{label}" repl="${lab}" property="content3"/>
-		<replace haystack="${content3}" needle="{desc}" repl="${description}" property="content4"/>
-		<echo message="${content4}" file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc"/>
+	    <copy 
+	    		file="${build}/context/admin/cdriver/${camelname}.cfc" 
+	    		tofile="${dist}/extension2/context/admin/cdriver/${camelname}.cfc" />
+	    <replaceregexp 
+	      file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc" 
+	      match="\{class\}" 
+	      replace="${class}" 
+	      byline="true"/>
+	    <replaceregexp 
+	      file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc" 
+	      match="\{label\}" 
+	      replace="${label}" 
+	      byline="true"/>
+	    <replaceregexp 
+	      file="${dist}/extension2/context/admin/cdriver/${camelname}.cfc" 
+	      match="\{desc\}" 
+	      replace="${description}" 
+	      byline="true"/>
+
+
+
 
 		<!-- copy the logos -->
 		<copy todir="${dist}/extension2/META-INF">
@@ -90,7 +146,7 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 		</copy>
 
 		<!-- Zip everything  -->
-		<zip destfile="${dist}/${bundlename}-${bundleversion}${build.number}${bundleversion_appendix}.lex">
+		<zip destfile="${dist}/${filename}-${bundleversion}.lex">
 				<zipfileset dir="${dist}/extension2"/>
 		</zip>
 
