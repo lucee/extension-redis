@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>3.0.0.58-SNAPSHOT</version>
+    <version>3.0.0.59-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
