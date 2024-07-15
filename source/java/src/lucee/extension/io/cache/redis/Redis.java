@@ -316,12 +316,11 @@ public class Redis {
 	 * Execute a Redis command and return it's result.
 	 *
 	 * @param args Command and arguments to pass into redis.
-	 * @param <T> The expected result type
 	 * @return Result of redis.
 	 * @throws IOException All protocol and io errors are IO exceptions.
 	 * @throws PageException
 	 */
-	public <T> T call(Object... args) throws IOException {
+	public Object call(Object... args) throws IOException {
 
 		// has keys?
 		boolean hasKeys = false;
@@ -356,14 +355,9 @@ public class Redis {
 
 	/**
 	 * Does a blocking read to wait for redis to send data.
-	 *
-	 * @param <T> The expected result type.
-	 * @return Result of redis
-	 * @throws IOException Propagated
-	 * @throws PageException
 	 */
-	public <T> T read() throws IOException {
-		return (T) reader.parse();
+	public Object read() throws IOException {
+		return reader.parse();
 	}
 
 	/**
@@ -385,7 +379,7 @@ public class Redis {
 		 * @return The responses
 		 * @throws IOException Propagated from underlying server.
 		 */
-		public abstract <T> List<T> read() throws IOException;
+		public abstract List read() throws IOException;
 
 	}
 
