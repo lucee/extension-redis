@@ -105,6 +105,8 @@ jobs:
         env:
           testLabels: redis
           testAdditional: ${{ github.workspace }}/tests
+          REDIS_PORT: 6379
+          REDIS_SERVER: localhost
 
   deploy:
     runs-on: ubuntu-latest
