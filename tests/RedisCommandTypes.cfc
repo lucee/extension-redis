@@ -19,7 +19,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 		var caches ={
 			"testRedis":{
 				"class":"lucee.extension.io.cache.redis.simple.RedisCache",
-				"bundleName":"redis.extension",
+				"bundleName":"org.lucee.redis.extension",
 				"custom":{
 					"minIdle":8,
 					"maxTotal":40,
