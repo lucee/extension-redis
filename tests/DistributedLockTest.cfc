@@ -19,7 +19,7 @@
 				type="server"
 				password=server.SERVERADMINPASSWORD
 				class="lucee.extension.io.cache.redis.simple.RedisCache"
-				bundleName="org.lucee.redis.extension"
+				bundleName="redis.extension"
 				name="distLock"
 				custom={
 					"minIdle":8,

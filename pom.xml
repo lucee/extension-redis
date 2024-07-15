@@ -13,7 +13,7 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <id>60772C12-F179-D555-8E2CD2B4F7428718</id>
-        <bundlename>org.lucee.redis.extension</bundlename>
+        <bundlename>redis.extension</bundlename>
         <luceeCoreVersion>5.0.0.157</luceeCoreVersion>
         <releaseType>server</releaseType>
         <label>Redis Extension</label>
