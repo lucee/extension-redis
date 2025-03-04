@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>3.0.1.0-SNAPSHOT</version>
+    <version>4.0.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
@@ -14,9 +14,9 @@
         <maven.compiler.target>11</maven.compiler.target>
         <id>60772C12-F179-D555-8E2CD2B4F7428718</id>
         <bundlename>redis.extension</bundlename>
-        <luceeCoreVersion>5.0.0.157</luceeCoreVersion>
+        <luceeCoreVersion>7.0.0.110</luceeCoreVersion>
         <releaseType>server</releaseType>
-        <label>Redis Extension</label>
+        <label>Lucee Redis Extension for Jakarta EE (Lucee 7+)</label>
         <camelname>Redis</camelname>
         <class>lucee.extension.io.cache.redis.simple.RedisCache</class>
         <release.url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</release.url>
@@ -64,7 +64,7 @@
         </developer>
     </developers>
 
-    <description>Free and open source, high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.</description>
+    <description>Lucee Redis Extension provides Redis integration including distributed locking, Redis commands, and cache implementation, specifically designed for Jakarta EE environments like Tomcat 10+. This version is fully compatible with Jakarta Servlet specifications and requires Lucee 7. For Lucee 6 installations, please use Redis Extension 3.x instead. The extension delivers the same familiar functionality while ensuring seamless operation in modern servlet containers that have migrated to the jakarta namespace.</description>
     <url>https://github.com/lucee/extension-redis</url>
 
     <profiles>
@@ -140,6 +140,10 @@
                                     <property name="description" value="${project.description}"/>
                                     <property name="class" value="${class}"/>
                                     <property name="camelname" value="${camelname}"/>
+                                    <property name="srcversion" value="${maven.compiler.source}"/>
+                                    <property name="trgversion" value="${maven.compiler.target}"/>
+
+
                                 </ant>
                                 <condition property="isSnapshot" value="true" else="false">
                                     <matches string="${project.version}" pattern=".*-SNAPSHOT"/>

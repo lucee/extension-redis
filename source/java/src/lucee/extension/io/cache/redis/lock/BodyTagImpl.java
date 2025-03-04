@@ -1,8 +1,8 @@
 package lucee.extension.io.cache.redis.lock;
 
-import javax.servlet.jsp.JspException;
-import javax.servlet.jsp.tagext.BodyContent;
-import javax.servlet.jsp.tagext.BodyTag;
+import jakarta.servlet.jsp.JspException;
+import jakarta.servlet.jsp.tagext.BodyContent;
+import jakarta.servlet.jsp.tagext.BodyTag;
 
 public abstract class BodyTagImpl extends TagImpl implements BodyTag {
 

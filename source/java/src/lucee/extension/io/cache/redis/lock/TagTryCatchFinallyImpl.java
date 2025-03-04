@@ -1,7 +1,6 @@
 package lucee.extension.io.cache.redis.lock;
 
-import javax.servlet.jsp.tagext.TryCatchFinally;
-
+import jakarta.servlet.jsp.tagext.TryCatchFinally;
 import lucee.runtime.exp.PageServletException;
 
 public abstract class TagTryCatchFinallyImpl extends TagImpl implements TryCatchFinally {

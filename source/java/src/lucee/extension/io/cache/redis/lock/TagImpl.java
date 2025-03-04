@@ -1,8 +1,7 @@
 package lucee.extension.io.cache.redis.lock;
 
-import javax.servlet.jsp.JspException;
-import javax.servlet.jsp.tagext.Tag;
-
+import jakarta.servlet.jsp.JspException;
+import jakarta.servlet.jsp.tagext.Tag;
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -32,7 +31,7 @@ public abstract class TagImpl implements Tag {
 	}
 
 	@Override
-	public void setPageContext(javax.servlet.jsp.PageContext pageContext) {
+	public void setPageContext(jakarta.servlet.jsp.PageContext pageContext) {
 		this.pageContext = (PageContext) pageContext;
 	}
 

@@ -10,8 +10,6 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
 
-import javax.servlet.http.Cookie;
-
 import org.w3c.dom.Attr;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
@@ -212,11 +210,6 @@ public class aprint {
 		else if (o instanceof NamedNodeMap) _eo(ps, (NamedNodeMap) o);
 		else if (o instanceof Node) _eo(ps, (Node) o);
 		else if (o instanceof Throwable) _eo(ps, (Throwable) o);
-		else if (o instanceof Cookie) {
-			Cookie c = (Cookie) o;
-			ps.println("Cookie(name:" + c.getName() + ";domain:" + c.getDomain() + ";maxage:" + c.getMaxAge() + ";path:" + c.getPath() + ";value:" + c.getValue() + ";version:"
-					+ c.getVersion() + ";secure:" + c.getSecure() + ")");
-		}
 
 		else ps.println(o);
 	}

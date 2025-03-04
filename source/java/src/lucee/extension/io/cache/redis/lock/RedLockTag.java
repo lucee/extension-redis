@@ -1,7 +1,6 @@
 package lucee.extension.io.cache.redis.lock;
 
-import javax.servlet.jsp.JspException;
-
+import jakarta.servlet.jsp.JspException;
 import lucee.loader.util.Util;
 import lucee.runtime.exp.PageException;
 

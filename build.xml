@@ -38,7 +38,7 @@
 
 	<target name="compile" depends="init" description="compile the source " >
 
-		<javac srcdir="${src}" target="11" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
+		<javac srcdir="${src}" source="${srcversion}" target="${trgversion}" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
 			<classpath refid="classpath" />
 		</javac>
 
@@ -73,6 +73,7 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 			<fileset dir="${lib}">
 				<include name="**/*.jar"/>
 				<exclude name="**/javax.servlet.jar"/>
+				<exclude name="**/jakarta*.jar"/>
 				<exclude name="**/lucee*.jar"/>
 			</fileset>
 		</copy>
