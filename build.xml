@@ -37,8 +37,7 @@
 	</target>
 
 	<target name="compile" depends="init" description="compile the source " >
-
-		<javac srcdir="${src}" target="11" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
+		<javac srcdir="${src}"  source="11" target="11" destdir="${temp}/classes"  debug="true" debuglevel="lines,vars,source">
 			<classpath refid="classpath" />
 		</javac>
 
