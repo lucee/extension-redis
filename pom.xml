@@ -16,7 +16,7 @@
         <bundlename>redis.extension</bundlename>
         <luceeCoreVersion>7.0.0.110</luceeCoreVersion>
         <releaseType>server</releaseType>
-        <label>Lucee Redis Extension for Jakarta EE (Lucee 7+)</label>
+        <label>Redis Extension for Jakarta EE (Lucee 7+)</label>
         <camelname>Redis</camelname>
         <class>lucee.extension.io.cache.redis.simple.RedisCache</class>
         <release.url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</release.url>
