@@ -47,10 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: setup
     env:
-      LUCEE_TEST_VERSIONS: ${{ vars.LUCEE_TEST_VERSIONS_JAKARTA }}
+      LUCEE_TEST_VERSIONS_JAKARTA: ${{ vars.LUCEE_TEST_VERSIONS_JAKARTA }}
     strategy:
       matrix:
-        lucee: ${{ fromJSON(vars.LUCEE_TEST_VERSIONS) }}
+        lucee: ${{ fromJSON(vars.LUCEE_TEST_VERSIONS_JAKARTA) }}
     services:
       redis:
         # Docker Hub image
