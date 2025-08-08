@@ -29,7 +29,7 @@
         <developerConnection>scm:git:git@github.com:lucee/extension-redis.git</developerConnection>
         <tag>${project.version}</tag>
     </scm>
-
+<!--
     <distributionManagement>
         <repository>
             <id>ossrh</id>
@@ -40,7 +40,7 @@
             <url>${snapshot.url}</url>
         </snapshotRepository>
     </distributionManagement>
-
+-->
     <licenses>
         <license>
             <name>The GNU Lesser General Public License, Version 2.1</name>
@@ -64,7 +64,8 @@
         </developer>
     </developers>
 
-    <description>Lucee Redis Extension provides Redis integration including distributed locking, Redis commands, and cache implementation, specifically designed for Jakarta EE environments like Tomcat 10+. This version is fully compatible with Jakarta Servlet specifications and requires Lucee 7. For Lucee 6 installations, please use Redis Extension 3.x instead. The extension delivers the same familiar functionality while ensuring seamless operation in modern servlet containers that have migrated to the jakarta namespace.</description>
+    <description>Free and open source, high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.</description>
+
     <url>https://github.com/lucee/extension-redis</url>
 
     <profiles>
@@ -245,15 +246,14 @@
 
             <!-- Nexus Staging Maven Plugin to automate the release process -->
             <plugin>
-                <groupId>org.sonatype.plugins</groupId>
-                <artifactId>nexus-staging-maven-plugin</artifactId>
-                <version>1.6.13</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <serverId>ossrh</serverId>
-                    <nexusUrl>https://oss.sonatype.org/</nexusUrl>
-                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
-                </configuration>
+              <groupId>org.sonatype.central</groupId>
+              <artifactId>central-publishing-maven-plugin</artifactId>
+              <version>0.8.0</version>
+              <extensions>true</extensions>
+              <configuration>
+                <publishingServerId>ossrh</publishingServerId>
+                <autoPublish>true</autoPublish>
+              </configuration>
             </plugin>
         </plugins>
     </build>
