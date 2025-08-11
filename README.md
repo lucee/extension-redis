@@ -8,7 +8,7 @@ Docs: https://docs.lucee.org/categories/cache.html
 
 For performance, the Redis extension stores data using BSON
 
-The redis driver previously used on Jedis.
+The Redis extension previously used Jedis.
 
 Please provide your feedback.
 
