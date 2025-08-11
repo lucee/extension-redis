@@ -64,6 +64,7 @@ name: "${label}"
 description: "${description}"
 start-bundles: false
 release-type: ${releaseType}
+lucee-core-version: "${luceeCoreVersion}"
 cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bundleversion}'}]"
 </echo>
 
