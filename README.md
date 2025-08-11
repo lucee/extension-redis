@@ -6,8 +6,16 @@ Issues: https://luceeserver.atlassian.net/issues/?jql=labels%20%3D%20redis
 
 Docs: https://docs.lucee.org/categories/cache.html
 
-The redis driver is based on Jedis. While this is a very robust driver and Redis is amazing this project has to be considered in Beta stage.
+For performance, the Redis extension stores data using BSON
+
+The redis driver previously used on Jedis.
+
 Please provide your feedback.
+
+### Versions
+
+- 4.x is for Lucee 7+ for Jakarta based servlet engines (Tomcat 10+)
+- 3.x is for Lucee 5.4 and 6, for Javax based sevlet engines (Tomcat 9)
 
 ### Installation
 
@@ -36,6 +44,9 @@ All set. You are done.
 * *idletime*:
   Not supported. Any passed value will be ignored. Timespan is fully supported.
 
+### Building
+
+To build the extension, run `mvn package` in the root directory
 
 
 
