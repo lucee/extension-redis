@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>4.0.0.0</version>
+    <version>4.0.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
@@ -29,18 +29,7 @@
         <developerConnection>scm:git:git@github.com:lucee/extension-redis.git</developerConnection>
         <tag>${project.version}</tag>
     </scm>
-<!--
-    <distributionManagement>
-        <repository>
-            <id>ossrh</id>
-            <url>${release.url}</url>
-        </repository>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>${snapshot.url}</url>
-        </snapshotRepository>
-    </distributionManagement>
--->
+
     <licenses>
         <license>
             <name>The GNU Lesser General Public License, Version 2.1</name>
