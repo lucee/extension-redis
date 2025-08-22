@@ -1,8 +1,8 @@
 package lucee.extension.io.cache.redis.lock;
 
-import jakarta.servlet.jsp.JspException;
 import jakarta.servlet.jsp.tagext.BodyContent;
 import jakarta.servlet.jsp.tagext.BodyTag;
+import lucee.runtime.exp.PageException;
 
 public abstract class BodyTagImpl extends TagImpl implements BodyTag {
 
@@ -14,12 +14,12 @@ public abstract class BodyTagImpl extends TagImpl implements BodyTag {
 	}
 
 	@Override
-	public void doInitBody() throws JspException {
+	public void doInitBody() throws PageException {
 
 	}
 
 	@Override
-	public int doAfterBody() throws JspException {
+	public int doAfterBody() throws PageException {
 		return SKIP_BODY;
 	}
 

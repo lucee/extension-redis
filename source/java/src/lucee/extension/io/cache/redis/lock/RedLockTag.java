@@ -1,6 +1,5 @@
 package lucee.extension.io.cache.redis.lock;
 
-import jakarta.servlet.jsp.JspException;
 import lucee.loader.util.Util;
 import lucee.runtime.exp.PageException;
 
@@ -93,7 +92,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	}
 
 	@Override
-	public int doEndTag() throws JspException {
+	public int doEndTag() throws PageException {
 		return EVAL_PAGE;
 	}
 
@@ -118,7 +117,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	}
 
 	@Override
-	public int doAfterBody() throws JspException {
+	public int doAfterBody() throws PageException {
 		return super.doAfterBody();
 	}
 }
