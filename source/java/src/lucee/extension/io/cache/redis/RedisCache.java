@@ -77,6 +77,14 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private final Object token = new Object();
 
+	/**
+	 * Boxed type is to support representing the null case
+	 */
+	private Integer __test__writeCommitDelay_ms = null;
+	public Integer get__test__writeCommitDelay_ms() {
+		return __test__writeCommitDelay_ms;
+	}
+
 	public RedisCache() {
 		if (async) {
 			// storage = new Storage(this);
@@ -96,6 +104,9 @@ public class RedisCache extends CacheSupport implements Command {
 	public void init(Config config, Struct arguments) throws IOException {
 		this.cl = arguments.getClass().getClassLoader();
 		if (config == null) config = CFMLEngineFactory.getInstance().getThreadConfig();
+
+		__test__writeCommitDelay_ms = caster.toIntValue(arguments.get("__test__writeCommitDelay_ms", null), 0);
+		__test__writeCommitDelay_ms = __test__writeCommitDelay_ms <= 0 ? null : __test__writeCommitDelay_ms;
 
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
@@ -236,7 +247,7 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
-				return val;
+				return val.copy(cl);
 			}
 			storage.doJoin(cnt, true);
 		}
@@ -330,7 +341,12 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
-				return val;
+				try {
+					return val.copy(cl);
+				}
+				catch (IOException e) {
+					return defaultValue;
+				}
 			}
 			storage.doJoin(cnt, true);
 		}
@@ -955,6 +971,10 @@ public class RedisCache extends CacheSupport implements Command {
 					}
 					synchronized (tokenAddToNear) {
 						if (entries.isEmpty()) tokenAddToNear.wait();
+					}
+
+					if (cache.get__test__writeCommitDelay_ms() != null) {
+						Thread.sleep(cache.get__test__writeCommitDelay_ms());
 					}
 				}
 				catch (Throwable e) {
