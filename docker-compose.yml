@@ -1,0 +1,183 @@
+# Docker Compose for testing Lucee Redis Extension
+# Usage:
+#   Single server:    docker-compose up -d redis
+#   With Sentinel:    docker-compose --profile sentinel up -d
+#   With Cluster:     docker-compose --profile cluster up -d
+#   Multi-Lucee:      docker-compose --profile multi-lucee up -d
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # SINGLE SERVER SETUP (default)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: redis-standalone
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  # ===========================================
+  # SENTINEL SETUP (High Availability)
+  # Use: docker-compose --profile sentinel up -d
+  # ===========================================
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    profiles: ["sentinel"]
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: redis-replica-1
+    profiles: ["sentinel"]
+    ports:
+      - "6381:6379"
+    command: redis-server --replicaof redis-master 6379
+    depends_on:
+      - redis-master
+
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: redis-replica-2
+    profiles: ["sentinel"]
+    ports:
+      - "6382:6379"
+    command: redis-server --replicaof redis-master 6379
+    depends_on:
+      - redis-master
+
+  sentinel-1:
+    image: redis:7-alpine
+    container_name: sentinel-1
+    profiles: ["sentinel"]
+    ports:
+      - "26379:26379"
+    command: >
+      sh -c 'echo "sentinel monitor mymaster redis-master 6379 2" > /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 60000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  sentinel-2:
+    image: redis:7-alpine
+    container_name: sentinel-2
+    profiles: ["sentinel"]
+    ports:
+      - "26380:26379"
+    command: >
+      sh -c 'echo "sentinel monitor mymaster redis-master 6379 2" > /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 60000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  sentinel-3:
+    image: redis:7-alpine
+    container_name: sentinel-3
+    profiles: ["sentinel"]
+    ports:
+      - "26381:26379"
+    command: >
+      sh -c 'echo "sentinel monitor mymaster redis-master 6379 2" > /tmp/sentinel.conf &&
+             echo "sentinel down-after-milliseconds mymaster 5000" >> /tmp/sentinel.conf &&
+             echo "sentinel failover-timeout mymaster 60000" >> /tmp/sentinel.conf &&
+             echo "sentinel parallel-syncs mymaster 1" >> /tmp/sentinel.conf &&
+             redis-sentinel /tmp/sentinel.conf'
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  # ===========================================
+  # CLUSTER SETUP (Sharding)
+  # Use: docker-compose --profile cluster up -d
+  # Then run: docker exec redis-cluster-1 redis-cli --cluster create ...
+  # ===========================================
+  redis-cluster-1:
+    image: redis:7-alpine
+    container_name: redis-cluster-1
+    profiles: ["cluster"]
+    ports:
+      - "7001:6379"
+      - "17001:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+
+  redis-cluster-2:
+    image: redis:7-alpine
+    container_name: redis-cluster-2
+    profiles: ["cluster"]
+    ports:
+      - "7002:6379"
+      - "17002:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+
+  redis-cluster-3:
+    image: redis:7-alpine
+    container_name: redis-cluster-3
+    profiles: ["cluster"]
+    ports:
+      - "7003:6379"
+      - "17003:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+
+  # ===========================================
+  # MULTI-LUCEE SETUP (Session Sharing Test)
+  # Use: docker-compose --profile multi-lucee up -d
+  # ===========================================
+  lucee-1:
+    image: lucee/lucee:6.1
+    container_name: lucee-server-1
+    profiles: ["multi-lucee"]
+    ports:
+      - "8881:8888"
+    environment:
+      - LUCEE_ENABLE_WARMUP=true
+    volumes:
+      - ./target:/opt/lucee/extensions:ro
+      - ./tests:/var/www/tests:ro
+      - ./test-app:/var/www:ro
+    depends_on:
+      - redis
+
+  lucee-2:
+    image: lucee/lucee:6.1
+    container_name: lucee-server-2
+    profiles: ["multi-lucee"]
+    ports:
+      - "8882:8888"
+    environment:
+      - LUCEE_ENABLE_WARMUP=true
+    volumes:
+      - ./target:/opt/lucee/extensions:ro
+      - ./tests:/var/www/tests:ro
+      - ./test-app:/var/www:ro
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:
