@@ -90,27 +90,13 @@ public class RedisCacheMetrics {
 
 	/**
 	 * Export metrics as a structured object for programmatic access.
+	 * Uses RedisCache.getCustomInfo() which already includes cache statistics.
 	 *
 	 * @return A Struct containing all metrics
 	 * @throws IOException If metrics cannot be retrieved
 	 */
 	public Struct exportMetricsStruct() throws IOException {
-		Struct metrics = cache.getCustomInfo();
-
-		// Add hit ratio if not present
-		Object stats = metrics.get("cacheStatistics", null);
-		if (stats == null) {
-			Struct cacheStats = cache.engine.getCreationUtil().createStruct();
-			cacheStats.setEL("hitCount", cache.hitCount());
-			cacheStats.setEL("missCount", cache.missCount());
-			cacheStats.setEL("putCount", cache.putCount());
-			cacheStats.setEL("removeCount", cache.removeCount());
-			long total = cache.hitCount() + cache.missCount();
-			cacheStats.setEL("hitRatio", total > 0 ? (double) cache.hitCount() / total : 0.0);
-			metrics.setEL("cacheStatistics", cacheStats);
-		}
-
-		return metrics;
+		return cache.getCustomInfo();
 	}
 
 	/**

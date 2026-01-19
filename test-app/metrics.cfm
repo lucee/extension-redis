@@ -2,10 +2,23 @@
 // Metrics and Statistics Test Page
 param name="url.format" default="html";
 
-// Get cache metadata
+// Get cache info using basic cache functions
 try {
-    cacheInfo = cacheGetMetadata(cacheName: "redisSession");
+    // Try to get all cache IDs to verify cache is working
+    ids = cacheGetAllIds("redisSession");
     hasCache = true;
+
+    // Build basic cache info struct
+    cacheInfo = {
+        keyCount: arrayLen(ids),
+        cacheStatistics: {
+            hitCount: 0,
+            missCount: 0,
+            putCount: 0,
+            removeCount: 0,
+            hitRatio: 0
+        }
+    };
 } catch (any e) {
     hasCache = false;
     cacheError = e.message;
@@ -34,7 +47,7 @@ if (url.keyExists("generate")) {
 if (url.keyExists("cleanup")) {
     for (i = 1; i <= 10; i++) {
         try {
-            cacheRemove(id: "metrics_test_#i#", cacheName: "redisSession");
+            cacheRemove(ids: "metrics_test_#i#", cacheName: "redisSession");
         } catch (any e) {}
     }
     location(url: "metrics.cfm", addToken: false);

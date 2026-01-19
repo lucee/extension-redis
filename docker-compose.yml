@@ -156,13 +156,14 @@ services:
     ports:
       - "8881:8888"
     environment:
-      - LUCEE_ENABLE_WARMUP=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
-      - ./target:/opt/lucee/extensions:ro
-      - ./tests:/var/www/tests:ro
-      - ./test-app:/var/www:ro
+      - lucee1-deploy:/opt/lucee/server/lucee-server/deploy
+      - ./test-app:/var/www
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   lucee-2:
     image: lucee/lucee:6.1
@@ -171,13 +172,29 @@ services:
     ports:
       - "8882:8888"
     environment:
-      - LUCEE_ENABLE_WARMUP=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
-      - ./target:/opt/lucee/extensions:ro
-      - ./tests:/var/www/tests:ro
-      - ./test-app:/var/www:ro
+      - lucee2-deploy:/opt/lucee/server/lucee-server/deploy
+      - ./test-app:/var/www
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Extension deployment helper - copies extension to Lucee deploy folders
+  extension-deployer:
+    image: alpine
+    container_name: extension-deployer
+    profiles: ["multi-lucee"]
+    volumes:
+      - ./target/redis-extension-4.0.0.1.lex:/source/redis-extension.lex:ro
+      - lucee1-deploy:/deploy1
+      - lucee2-deploy:/deploy2
+    command: sh -c "cp /source/redis-extension.lex /deploy1/ && cp /source/redis-extension.lex /deploy2/ && echo 'Extension deployed'"
     depends_on:
       - redis
 
 volumes:
   redis-data:
+  lucee1-deploy:
+  lucee2-deploy:
