@@ -159,6 +159,38 @@ cache: "[{'class':'${class}','bundleName':'${bundlename}','bundleVersion':'${bun
 		<delete dir="${dist}/extension2"/>
 	</target>
 
+	<!-- Test targets -->
+	<property name="test.src" location="source/java/test"/>
+	<property name="test.classes" location="${temp}/test-classes"/>
+	<property name="test.reports" location="${temp}/test-reports"/>
 
+	<target name="test-compile" depends="compile" description="compile the test source">
+		<mkdir dir="${test.classes}"/>
+		<javac srcdir="${test.src}" source="${srcversion}" target="${trgversion}" destdir="${test.classes}" debug="true" includeantruntime="false">
+			<classpath>
+				<path refid="classpath"/>
+				<pathelement location="${temp}/classes"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="test" depends="test-compile" description="run unit tests">
+		<mkdir dir="${test.reports}"/>
+		<junit printsummary="yes" haltonfailure="no" failureproperty="test.failed">
+			<classpath>
+				<path refid="classpath"/>
+				<pathelement location="${temp}/classes"/>
+				<pathelement location="${test.classes}"/>
+			</classpath>
+			<formatter type="plain"/>
+			<formatter type="xml"/>
+			<batchtest fork="yes" todir="${test.reports}">
+				<fileset dir="${test.src}">
+					<include name="**/*Test.java"/>
+				</fileset>
+			</batchtest>
+		</junit>
+		<fail if="test.failed" message="Unit tests failed"/>
+	</target>
 
 </project>

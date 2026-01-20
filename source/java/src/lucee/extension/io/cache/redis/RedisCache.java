@@ -26,6 +26,9 @@ import lucee.extension.io.cache.pool.RedisPoolListenerNotifyOnReturn;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
 import lucee.extension.io.cache.redis.metrics.RedisCacheMetrics;
+import lucee.extension.io.cache.redis.resilience.CircuitBreaker;
+import lucee.extension.io.cache.redis.resilience.ResilientOperation;
+import lucee.extension.io.cache.redis.resilience.RetryPolicy;
 import lucee.extension.io.cache.redis.sm.SecretReciever;
 import lucee.extension.io.cache.redis.sm.SecretReciever.CredDat;
 import lucee.extension.io.cache.util.Coder;
@@ -100,6 +103,16 @@ public class RedisCache extends CacheSupport implements Command {
 	private boolean touchOnAccess;
 	private int idleTimeoutSeconds;
 
+	// Resilience components
+	private CircuitBreaker circuitBreaker;
+	private RetryPolicy retryPolicy;
+	private ResilientOperation resilientOps;
+	private boolean resilienceEnabled;
+	private int resilienceMaxRetries;
+	private long resilienceRetryDelayMs;
+	private int resilienceCircuitBreakerThreshold;
+	private long resilienceCircuitBreakerResetMs;
+
 	private final Object token = new Object();
 
 	public RedisCache() {
@@ -167,6 +180,20 @@ public class RedisCache extends CacheSupport implements Command {
 		// idle timeout touch behavior - reset TTL on each read to implement sliding expiration
 		touchOnAccess = caster.toBooleanValue(arguments.get("touchOnAccess", null), false);
 		idleTimeoutSeconds = caster.toIntValue(arguments.get("idleTimeoutSeconds", null), 0);
+
+		// Resilience configuration
+		resilienceEnabled = caster.toBooleanValue(arguments.get("resilienceEnabled", null), true);
+		resilienceMaxRetries = caster.toIntValue(arguments.get("resilienceMaxRetries", null), 3);
+		resilienceRetryDelayMs = caster.toLongValue(arguments.get("resilienceRetryDelayMs", null), 100L);
+		resilienceCircuitBreakerThreshold = caster.toIntValue(arguments.get("resilienceCircuitBreakerThreshold", null), 5);
+		resilienceCircuitBreakerResetMs = caster.toLongValue(arguments.get("resilienceCircuitBreakerResetMs", null), 30000L);
+
+		// Initialize resilience components
+		if (resilienceEnabled) {
+			circuitBreaker = new CircuitBreaker(resilienceCircuitBreakerThreshold, resilienceCircuitBreakerResetMs, 3);
+			retryPolicy = new RetryPolicy(resilienceMaxRetries, resilienceRetryDelayMs, 5000, 2.0, circuitBreaker);
+			resilientOps = new ResilientOperation(circuitBreaker, retryPolicy, null, log);
+		}
 
 		// secret manager
 		secretName = caster.toString(arguments.get("secretName", null), null);
@@ -320,7 +347,7 @@ public class RedisCache extends CacheSupport implements Command {
 				touchKey(conn, bkey);
 			}
 
-			Object evaluated = Coder.evaluate(cl, val);
+			Object evaluated = safeDeserialize(val, skey);
 			// Clone if needed to prevent reference sharing
 			if (alwaysClone) {
 				evaluated = cloneValue(evaluated);
@@ -448,10 +475,23 @@ public class RedisCache extends CacheSupport implements Command {
 				touchKey(conn, bkey);
 			}
 
-			Object evaluated = Coder.evaluate(cl, val);
+			// Use safe deserialization with default fallback
+			Object evaluated = safeDeserializeOrDefault(val, skey, null);
+			if (evaluated == null) {
+				// Deserialization failed, treat as a miss
+				cacheMissCount.incrementAndGet();
+				cacheHitCount.decrementAndGet();
+				return defaultValue;
+			}
 			// Clone if needed to prevent reference sharing
 			if (alwaysClone) {
-				evaluated = cloneValue(evaluated);
+				try {
+					evaluated = cloneValue(evaluated);
+				}
+				catch (IOException e) {
+					if (log != null) log.error("redis-cache", "Clone failed: " + e.getMessage());
+					return defaultValue;
+				}
 			}
 			return new RedisCacheEntry(this, bkey, evaluated, val.length);
 		}
@@ -719,7 +759,11 @@ public class RedisCache extends CacheSupport implements Command {
 				byte[] k;
 				for (byte[] val: values) {
 					k = keys[i++];
-					list.add(new RedisCacheEntry(this, k, val == null ? null : Coder.evaluate(cl, val), val == null ? 0 : val.length));
+					Object evaluated = null;
+					if (val != null) {
+						evaluated = safeDeserializeOrDefault(val, stripPrefix(k), null);
+					}
+					list.add(new RedisCacheEntry(this, k, evaluated, val == null ? 0 : val.length));
 				}
 			}
 			else {
@@ -732,7 +776,12 @@ public class RedisCache extends CacheSupport implements Command {
 					catch (Exception jde) {
 						if (log != null) log.error("redis-cache", jde);
 					}
-					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length));
+					if (val != null) {
+						Object evaluated = safeDeserializeOrDefault(val, stripPrefix(key), null);
+						if (evaluated != null) {
+							list.add(new RedisCacheEntry(this, key, evaluated, val.length));
+						}
+					}
 				}
 			}
 			return list;
@@ -767,8 +816,15 @@ public class RedisCache extends CacheSupport implements Command {
 			if (lkeys == null || lkeys.size() == 0) return list;
 
 			List<byte[]> values = (List<byte[]>) conn.call("MGET", lkeys);
-			for (byte[] val: values) {
-				list.add(Coder.evaluate(cl, val));
+			for (int i = 0; i < values.size(); i++) {
+				byte[] val = values.get(i);
+				if (val != null) {
+					String keyForLog = i < lkeys.size() ? stripPrefix(lkeys.get(i)) : "unknown";
+					Object evaluated = safeDeserializeOrDefault(val, keyForLog, null);
+					if (evaluated != null) {
+						list.add(evaluated);
+					}
+				}
 			}
 			return list;
 		}
@@ -926,6 +982,11 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	protected Redis getConnection(boolean onlyIfSufficent, long timeout) throws IOException {
+		// Check circuit breaker first for fast fail
+		if (circuitBreaker != null && !circuitBreaker.allowRequest()) {
+			throw new IOException("Circuit breaker is open - Redis operations temporarily disabled. Failures: " + circuitBreaker.getFailureCount());
+		}
+
 		long start = timeout > 0 ? System.currentTimeMillis() : 0;
 		while (pool == null) {
 			if (log != null) log.debug("redis-cache", "waiting for the pool");
@@ -991,15 +1052,23 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	private Redis borrow(long timeout) throws IOException {
+		// Use retry logic if resilience is enabled
+		if (resilientOps != null && retryPolicy != null) {
+			return retryPolicy.execute(() -> borrowOnce(timeout), "borrow connection");
+		}
+		return borrowOnce(timeout);
+	}
+
+	private Redis borrowOnce(long timeout) throws IOException {
 		try {
 			Redis redis;
 			if (timeout > 0) {
 				redis = pool.borrowObject(timeout);
-				if (redis == null) throw new IOException("could not aquire a connection within the given time (connection timeout " + timeout + "ms).");
+				if (redis == null) throw new IOException("could not acquire a connection within the given time (connection timeout " + timeout + "ms).");
 				return redis;
 			}
 			redis = pool.borrowObject();
-			if (redis == null) throw new IOException("could not aquire a lock.");
+			if (redis == null) throw new IOException("could not acquire a connection.");
 			return redis;
 		}
 		catch (Exception e) {
@@ -1074,11 +1143,34 @@ public class RedisCache extends CacheSupport implements Command {
 		private long current = Long.MIN_VALUE;
 		private final Object tokenAddToNear = new Object();
 		private final Object tokenAddToCache = new Object();
+		private volatile boolean running = true;
+		private volatile boolean shuttingDown = false;
 
 		public Storage(RedisCache cache) {
 			this.engine = CFMLEngineFactory.getInstance();
 			this.cache = cache;
 			this.entries = new ConcurrentLinkedDeque<>();
+			setName("redis-storage-" + System.identityHashCode(cache));
+			setDaemon(true);
+		}
+
+		/**
+		 * Signal the thread to stop gracefully.
+		 * Will finish processing any pending entries before stopping.
+		 */
+		public void shutdown() {
+			shuttingDown = true;
+			running = false;
+			synchronized (tokenAddToNear) {
+				tokenAddToNear.notifyAll();
+			}
+		}
+
+		/**
+		 * Check if shutdown has been requested.
+		 */
+		public boolean isShuttingDown() {
+			return shuttingDown;
 		}
 
 		public NearCacheEntry get(byte[] bkey) {
@@ -1097,6 +1189,7 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 
 		public void doJoin(long count, boolean one) {
+			if (shuttingDown) return;
 
 			long startCurr = getCurrent();
 			if (startCurr > count || entries.isEmpty()) {
@@ -1107,7 +1200,7 @@ public class RedisCache extends CacheSupport implements Command {
 			int max = 100;
 			long curr;
 			// if we have entries, we wait until there are no entries anymore or they are newer than the request
-			while (true) {
+			while (running && !shuttingDown) {
 				if (--max <= 0) {
 					break;
 				}
@@ -1139,32 +1232,76 @@ public class RedisCache extends CacheSupport implements Command {
 
 		@Override
 		public void run() {
-			while (true) {
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread started");
+
+			while (running) {
 				NearCacheEntry entry;
 				try {
+					// Process all pending entries
 					while ((entry = entries.poll()) != null) {
 						current = entry.count();
-						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						try {
+							cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						}
+						catch (IOException e) {
+							if (cache.log != null) cache.log.error("redis-cache", "Failed to store entry: " + e.getMessage());
+							// Re-queue the entry for retry if not shutting down
+							if (!shuttingDown) {
+								entries.addFirst(entry);
+								// Wait before retrying
+								Thread.sleep(1000);
+								break;
+							}
+						}
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();
 						}
 					}
-					synchronized (tokenAddToNear) {
-						if (entries.isEmpty()) tokenAddToNear.wait();
+
+					// Wait for more entries (unless shutting down)
+					if (running && !shuttingDown) {
+						synchronized (tokenAddToNear) {
+							if (entries.isEmpty()) {
+								tokenAddToNear.wait(5000); // Use timeout to periodically check running flag
+							}
+						}
 					}
+				}
+				catch (InterruptedException e) {
+					if (cache.log != null) cache.log.debug("redis-cache", "Storage thread interrupted");
+					Thread.currentThread().interrupt();
+					break;
 				}
 				catch (Throwable e) {
 					if (cache.log != null) cache.log.error("redis-cache", e);
-					synchronized (this) {
+					if (running && !shuttingDown) {
 						try {
-							this.wait(1000); // slow down in case of an issue
+							Thread.sleep(1000); // slow down in case of an issue
 						}
-						catch (Exception ie) {
-							if (cache.log != null) cache.log.error("redis-cache", ie);
+						catch (InterruptedException ie) {
+							Thread.currentThread().interrupt();
+							break;
 						}
 					}
 				}
 			}
+
+			// Final flush - process any remaining entries
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread shutting down, flushing " + entries.size() + " remaining entries");
+			NearCacheEntry entry;
+			int remaining = entries.size();
+			int flushed = 0;
+			while ((entry = entries.poll()) != null && flushed < remaining + 10) { // Limit to prevent infinite loop
+				try {
+					cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+					flushed++;
+				}
+				catch (IOException e) {
+					if (cache.log != null) cache.log.error("redis-cache", "Failed to flush entry during shutdown: " + e.getMessage());
+				}
+			}
+
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread stopped, flushed " + flushed + " entries");
 		}
 
 		private static boolean equals(byte[] left, byte[] right) {
@@ -1233,6 +1370,13 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	public void invalidateConnection(Redis conn) {
+		// Record failure in circuit breaker
+		if (circuitBreaker != null) {
+			circuitBreaker.recordFailure();
+			if (log != null && circuitBreaker.getState() == CircuitBreaker.State.OPEN) {
+				log.warn("redis-cache", "Circuit breaker OPENED after " + circuitBreaker.getFailureCount() + " failures");
+			}
+		}
 		try {
 			if (conn != null) pool.invalidateObject(conn);
 		}
@@ -1249,6 +1393,74 @@ public class RedisCache extends CacheSupport implements Command {
 		return true;
 	}
 
+	/**
+	 * Shutdown the cache and release all resources.
+	 * This method should be called when the cache is no longer needed.
+	 */
+	public void shutdown() {
+		if (log != null) log.debug("redis-cache", "Shutting down Redis cache");
+
+		// Shutdown the storage thread
+		if (storage != null) {
+			storage.shutdown();
+			try {
+				storage.join(5000); // Wait up to 5 seconds for thread to finish
+			}
+			catch (InterruptedException e) {
+				if (log != null) log.warn("redis-cache", "Interrupted while waiting for storage thread to stop");
+				Thread.currentThread().interrupt();
+			}
+		}
+
+		// Shutdown resilience components
+		if (resilientOps != null) {
+			resilientOps.shutdown();
+		}
+
+		// Close the pool
+		if (pool != null) {
+			pool.close();
+		}
+
+		if (log != null) log.debug("redis-cache", "Redis cache shutdown complete");
+	}
+
+	/**
+	 * Check if the circuit breaker is currently open (failing fast).
+	 *
+	 * @return true if circuit breaker is open
+	 */
+	public boolean isCircuitBreakerOpen() {
+		return circuitBreaker != null && circuitBreaker.isOpen();
+	}
+
+	/**
+	 * Get the current circuit breaker state.
+	 *
+	 * @return Circuit breaker state, or null if not enabled
+	 */
+	public CircuitBreaker.State getCircuitBreakerState() {
+		return circuitBreaker != null ? circuitBreaker.getState() : null;
+	}
+
+	/**
+	 * Reset the circuit breaker to allow operations again.
+	 * Use this for manual recovery after fixing the underlying issue.
+	 */
+	public void resetCircuitBreaker() {
+		if (circuitBreaker != null) {
+			circuitBreaker.reset();
+			if (log != null) log.info("redis-cache", "Circuit breaker manually reset");
+		}
+	}
+
+	/**
+	 * Check if resilience features are enabled.
+	 */
+	public boolean isResilienceEnabled() {
+		return resilienceEnabled;
+	}
+
 	private String choose(String v1, String v2) {
 		if (!Util.isEmpty(v1, true)) return v1.trim();
 		if (!Util.isEmpty(v2, true)) return v2.trim();
@@ -1259,6 +1471,74 @@ public class RedisCache extends CacheSupport implements Command {
 		if (v1 != 0) return v1;
 		if (v2 != 0) return v2;
 		return 0;
+	}
+
+	/**
+	 * Safely deserialize a byte array into an object with comprehensive error handling.
+	 * This method provides better error messages and logging when deserialization fails.
+	 *
+	 * @param data The byte array to deserialize
+	 * @param keyForLogging The key being accessed (for error logging)
+	 * @return The deserialized object, or the raw data as string if deserialization fails
+	 * @throws IOException If deserialization fails and cannot recover
+	 */
+	protected Object safeDeserialize(byte[] data, String keyForLogging) throws IOException {
+		if (data == null) {
+			return null;
+		}
+
+		try {
+			return Coder.evaluate(cl, data);
+		}
+		catch (IOException e) {
+			// Log the error with context
+			if (log != null) {
+				log.error("redis-cache", "Deserialization failed for key [" + keyForLogging + "]: " + e.getMessage() + ". Data length: " + data.length + " bytes.");
+			}
+
+			// Check if this looks like it might be a class loading issue
+			String message = e.getMessage();
+			if (message != null && (message.contains("ClassNotFoundException") || message.contains("class not found"))) {
+				if (log != null) {
+					log.warn("redis-cache", "Class not found during deserialization. This may indicate version mismatch between servers or missing classes.");
+				}
+			}
+
+			// Re-throw with more context
+			throw new IOException("Failed to deserialize cache entry for key [" + keyForLogging + "]: " + e.getMessage(), e);
+		}
+		catch (Exception e) {
+			// Catch any unexpected exceptions
+			if (log != null) {
+				log.error("redis-cache", "Unexpected error during deserialization for key [" + keyForLogging + "]: " + e.getClass().getName() + " - " + e.getMessage());
+			}
+			throw new IOException("Unexpected deserialization error for key [" + keyForLogging + "]", e);
+		}
+	}
+
+	/**
+	 * Safely deserialize with a default value on failure.
+	 * Use this variant when you want graceful degradation instead of exceptions.
+	 *
+	 * @param data The byte array to deserialize
+	 * @param keyForLogging The key being accessed
+	 * @param defaultValue Value to return if deserialization fails
+	 * @return The deserialized object, or defaultValue if deserialization fails
+	 */
+	protected Object safeDeserializeOrDefault(byte[] data, String keyForLogging, Object defaultValue) {
+		if (data == null) {
+			return defaultValue;
+		}
+
+		try {
+			return Coder.evaluate(cl, data);
+		}
+		catch (Exception e) {
+			if (log != null) {
+				log.warn("redis-cache", "Deserialization failed for key [" + keyForLogging + "], returning default value: " + e.getMessage());
+			}
+			return defaultValue;
+		}
 	}
 
 	/**
