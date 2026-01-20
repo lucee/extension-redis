@@ -241,4 +241,58 @@ component extends="Cache" {
 	public string function getDescription() {
 		return "{desc}";
 	}
+
+	/**
+	 * Validates the cache configuration by attempting to connect to Redis.
+	 * Returns empty string on success, or a warning message on failure.
+	 * Does not throw an exception - allows editing even when Redis is unavailable.
+	 * This fixes Issue #17: Cannot edit an invalid cache connection in lucee admin.
+	 *
+	 * @param custom The configuration struct
+	 * @return Empty string on success, warning message on failure
+	 */
+	public string function validate(required struct custom) {
+		try {
+			var connectionMode = custom.connectionMode ?: "standalone";
+
+			// Validate based on connection mode
+			if (connectionMode == "standalone") {
+				var host = custom.host ?: "localhost";
+				var port = val(custom.port ?: 6379);
+				var socketTimeout = val(custom.socketTimeout ?: 2000);
+				var ssl = custom.ssl ?: false;
+
+				// Try to create a simple socket connection to validate connectivity
+				var socket = createObject("java", "java.net.Socket").init();
+				var socketAddress = createObject("java", "java.net.InetSocketAddress").init(host, port);
+
+				try {
+					socket.connect(socketAddress, socketTimeout);
+					socket.close();
+				}
+				catch (any e) {
+					// Return warning but don't prevent saving
+					return "Warning: Cannot connect to Redis at #host#:#port# - #e.message#. Configuration will be saved but cache may not work until Redis is available.";
+				}
+			}
+			else if (connectionMode == "sentinel") {
+				var sentinelNodes = custom.sentinelNodes ?: "";
+				if (len(trim(sentinelNodes)) == 0) {
+					return "Warning: Sentinel nodes not configured. Please provide at least one sentinel node.";
+				}
+			}
+			else if (connectionMode == "cluster") {
+				var clusterNodes = custom.clusterNodes ?: "";
+				if (len(trim(clusterNodes)) == 0) {
+					return "Warning: Cluster nodes not configured. Please provide at least one cluster node.";
+				}
+			}
+
+			return "";
+		}
+		catch (any e) {
+			// If validation itself fails, return warning but allow saving
+			return "Warning: Could not validate configuration - #e.message#. Configuration will be saved.";
+		}
+	}
 }
