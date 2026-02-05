@@ -8,6 +8,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
@@ -24,6 +25,10 @@ import lucee.extension.io.cache.pool.RedisPoolListener;
 import lucee.extension.io.cache.pool.RedisPoolListenerNotifyOnReturn;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
 import lucee.extension.io.cache.redis.Redis.Pipeline;
+import lucee.extension.io.cache.redis.metrics.RedisCacheMetrics;
+import lucee.extension.io.cache.redis.resilience.CircuitBreaker;
+import lucee.extension.io.cache.redis.resilience.ResilientOperation;
+import lucee.extension.io.cache.redis.resilience.RetryPolicy;
 import lucee.extension.io.cache.redis.sm.SecretReciever;
 import lucee.extension.io.cache.redis.sm.SecretReciever.CredDat;
 import lucee.extension.io.cache.util.Coder;
@@ -37,6 +42,12 @@ import lucee.runtime.util.Cast;
 public class RedisCache extends CacheSupport implements Command {
 
 	private static long counter = Long.MIN_VALUE;
+
+	// Cache statistics counters
+	private final AtomicLong cacheHitCount = new AtomicLong(0);
+	private final AtomicLong cacheMissCount = new AtomicLong(0);
+	private final AtomicLong cachePutCount = new AtomicLong(0);
+	private final AtomicLong cacheRemoveCount = new AtomicLong(0);
 
 	protected final Object TOKEN = new Object();
 
@@ -74,6 +85,33 @@ public class RedisCache extends CacheSupport implements Command {
 	private String accessKeyId;
 	private String secretKey;
 	private boolean ssl;
+
+	// Key prefix for namespace isolation
+	private String keyPrefix;
+	private byte[] keyPrefixBytes;
+
+	// Session locking configuration
+	private boolean sessionLockingEnabled;
+	private int sessionLockExpiration;
+	private long sessionLockTimeout;
+	private SessionLockManager sessionLockManager;
+
+	// Object reference handling - when true, always clone objects on get to prevent reference sharing
+	private boolean alwaysClone;
+
+	// Idle timeout touch behavior - when true and idleTimeoutSeconds > 0, reset TTL on each read
+	private boolean touchOnAccess;
+	private int idleTimeoutSeconds;
+
+	// Resilience components
+	private CircuitBreaker circuitBreaker;
+	private RetryPolicy retryPolicy;
+	private ResilientOperation resilientOps;
+	private boolean resilienceEnabled;
+	private int resilienceMaxRetries;
+	private long resilienceRetryDelayMs;
+	private int resilienceCircuitBreakerThreshold;
+	private long resilienceCircuitBreakerResetMs;
 
 	private final Object token = new Object();
 
@@ -115,6 +153,47 @@ public class RedisCache extends CacheSupport implements Command {
 		if (Util.isEmpty(password)) password = null;
 
 		ssl = caster.toBooleanValue(arguments.get("ssl", null), false);
+
+		// key prefix for namespace isolation
+		keyPrefix = caster.toString(arguments.get("keyPrefix", null), null);
+		if (Util.isEmpty(keyPrefix, true)) {
+			keyPrefix = null;
+			keyPrefixBytes = null;
+		}
+		else {
+			keyPrefix = keyPrefix.trim();
+			// Ensure prefix ends with a separator if it doesn't already
+			if (!keyPrefix.endsWith(":") && !keyPrefix.endsWith("/") && !keyPrefix.endsWith(".")) {
+				keyPrefix = keyPrefix + ":";
+			}
+			keyPrefixBytes = keyPrefix.getBytes(Coder.UTF8);
+		}
+
+		// session locking configuration (default: disabled for backward compatibility)
+		sessionLockingEnabled = caster.toBooleanValue(arguments.get("sessionLockingEnabled", null), false);
+		sessionLockExpiration = caster.toIntValue(arguments.get("sessionLockExpiration", null), 30);
+		sessionLockTimeout = caster.toLongValue(arguments.get("sessionLockTimeout", null), 5000L);
+
+		// object reference handling - when true, always re-deserialize objects to prevent reference sharing
+		alwaysClone = caster.toBooleanValue(arguments.get("alwaysClone", null), false);
+
+		// idle timeout touch behavior - reset TTL on each read to implement sliding expiration
+		touchOnAccess = caster.toBooleanValue(arguments.get("touchOnAccess", null), false);
+		idleTimeoutSeconds = caster.toIntValue(arguments.get("idleTimeoutSeconds", null), 0);
+
+		// Resilience configuration
+		resilienceEnabled = caster.toBooleanValue(arguments.get("resilienceEnabled", null), true);
+		resilienceMaxRetries = caster.toIntValue(arguments.get("resilienceMaxRetries", null), 3);
+		resilienceRetryDelayMs = caster.toLongValue(arguments.get("resilienceRetryDelayMs", null), 100L);
+		resilienceCircuitBreakerThreshold = caster.toIntValue(arguments.get("resilienceCircuitBreakerThreshold", null), 5);
+		resilienceCircuitBreakerResetMs = caster.toLongValue(arguments.get("resilienceCircuitBreakerResetMs", null), 30000L);
+
+		// Initialize resilience components
+		if (resilienceEnabled) {
+			circuitBreaker = new CircuitBreaker(resilienceCircuitBreakerThreshold, resilienceCircuitBreakerResetMs, 3);
+			retryPolicy = new RetryPolicy(resilienceMaxRetries, resilienceRetryDelayMs, 5000, 2.0, circuitBreaker);
+			resilientOps = new ResilientOperation(circuitBreaker, retryPolicy, null, log);
+		}
 
 		// secret manager
 		secretName = caster.toString(arguments.get("secretName", null), null);
@@ -232,10 +311,15 @@ public class RedisCache extends CacheSupport implements Command {
 	@Override
 	public CacheEntry getCacheEntry(String skey) throws IOException {
 		long cnt = counter();
-		byte[] bkey = Coder.toKey(skey);
+		byte[] bkey = toKeyWithPrefix(skey);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
+				cacheHitCount.incrementAndGet();
+				// Clone if needed to prevent reference sharing
+				if (alwaysClone) {
+					return new NearCacheEntry(val.getByteKey(), cloneValue(val.getValue()), val.getExpires(), val.count());
+				}
 				return val;
 			}
 			storage.doJoin(cnt, true);
@@ -251,9 +335,24 @@ public class RedisCache extends CacheSupport implements Command {
 				String msg = e.getMessage() + "";
 				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
 			}
-			if (val == null) throw new IOException("Cache key [" + skey + "] does not exists");
+			if (val == null) {
+				cacheMissCount.incrementAndGet();
+				throw new IOException("Cache key [" + skey + "] does not exists");
+			}
 
-			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
+			cacheHitCount.incrementAndGet();
+
+			// Touch on access - reset TTL to idle timeout value
+			if (touchOnAccess && idleTimeoutSeconds > 0) {
+				touchKey(conn, bkey);
+			}
+
+			Object evaluated = safeDeserialize(val, skey);
+			// Clone if needed to prevent reference sharing
+			if (alwaysClone) {
+				evaluated = cloneValue(evaluated);
+			}
+			return new RedisCacheEntry(this, bkey, evaluated, val.length);
 		}
 		catch (SocketException se) {
 			invalidateConnection(conn);
@@ -326,10 +425,21 @@ public class RedisCache extends CacheSupport implements Command {
 	@Override
 	public CacheEntry getCacheEntry(String skey, CacheEntry defaultValue) {
 		long cnt = counter();
-		byte[] bkey = Coder.toKey(skey);
+		byte[] bkey = toKeyWithPrefix(skey);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
+				cacheHitCount.incrementAndGet();
+				// Clone if needed to prevent reference sharing
+				if (alwaysClone) {
+					try {
+						return new NearCacheEntry(val.getByteKey(), cloneValue(val.getValue()), val.getExpires(), val.count());
+					}
+					catch (IOException e) {
+						if (log != null) log.error("redis-cache", e);
+						return defaultValue;
+					}
+				}
 				return val;
 			}
 			storage.doJoin(cnt, true);
@@ -340,6 +450,7 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 		catch (IOException e1) {
 			if (log != null) log.error("redis-cache", e1);
+			cacheMissCount.incrementAndGet();
 			return defaultValue;
 		}
 		try {
@@ -352,9 +463,37 @@ public class RedisCache extends CacheSupport implements Command {
 				String msg = e.getMessage() + "";
 				if (msg.startsWith("WRONGTYPE")) val = (byte[]) conn.call("LPOP", bkey);
 			}
-			if (val == null) return defaultValue;
+			if (val == null) {
+				cacheMissCount.incrementAndGet();
+				return defaultValue;
+			}
 
-			return new RedisCacheEntry(this, bkey, Coder.evaluate(cl, val), val.length);
+			cacheHitCount.incrementAndGet();
+
+			// Touch on access - reset TTL to idle timeout value
+			if (touchOnAccess && idleTimeoutSeconds > 0) {
+				touchKey(conn, bkey);
+			}
+
+			// Use safe deserialization with default fallback
+			Object evaluated = safeDeserializeOrDefault(val, skey, null);
+			if (evaluated == null) {
+				// Deserialization failed, treat as a miss
+				cacheMissCount.incrementAndGet();
+				cacheHitCount.decrementAndGet();
+				return defaultValue;
+			}
+			// Clone if needed to prevent reference sharing
+			if (alwaysClone) {
+				try {
+					evaluated = cloneValue(evaluated);
+				}
+				catch (IOException e) {
+					if (log != null) log.error("redis-cache", "Clone failed: " + e.getMessage());
+					return defaultValue;
+				}
+			}
+			return new RedisCacheEntry(this, bkey, evaluated, val.length);
 		}
 		catch (Exception e) {
 			if (log != null) log.error("redis-cache", e);
@@ -364,6 +503,23 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 		finally {
 			releaseConnectionEL(conn);
+		}
+	}
+
+	/**
+	 * Touch a key - reset its TTL to the idle timeout value.
+	 * This implements sliding expiration for cache entries.
+	 *
+	 * @param conn The Redis connection
+	 * @param bkey The key to touch
+	 */
+	private void touchKey(Redis conn, byte[] bkey) {
+		try {
+			conn.call("EXPIRE", bkey, String.valueOf(idleTimeoutSeconds));
+		}
+		catch (Exception e) {
+			// Log but don't fail the get operation
+			if (log != null) log.warn("redis-cache", "Failed to touch key: " + e.getMessage());
 		}
 	}
 
@@ -383,7 +539,7 @@ public class RedisCache extends CacheSupport implements Command {
 		else {
 			exp = defaultExpire;
 		}
-		byte[] bkey = Coder.toKey(key);
+		byte[] bkey = toKeyWithPrefix(key);
 
 		if (async) {
 			storage.put(bkey, val, exp, cnt);
@@ -396,11 +552,13 @@ public class RedisCache extends CacheSupport implements Command {
 		Redis conn = getConnection();
 		try {
 			if (exp > 0) {
-				conn.pipeline().call("SET", bkey, Coder.serialize(val)).call("EXPIRE", bkey, Integer.toString(exp)).read();
+				// Use atomic SET with EX to avoid race condition between SET and EXPIRE
+				conn.call("SET", bkey, Coder.serialize(val), "EX", String.valueOf(exp));
 			}
 			else {
 				conn.call("SET", bkey, Coder.serialize(val));
 			}
+			cachePutCount.incrementAndGet();
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -414,7 +572,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public boolean contains(String key) throws IOException {
-		byte[] bkey = Coder.toKey(key);
+		byte[] bkey = toKeyWithPrefix(key);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) return true;
@@ -439,7 +597,9 @@ public class RedisCache extends CacheSupport implements Command {
 
 		Redis conn = getConnection();
 		try {
-			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
+			boolean result = engine.getCastUtil().toBooleanValue(conn.call("DEL", toKeyWithPrefix(key)));
+			if (result) cacheRemoveCount.incrementAndGet();
+			return result;
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -456,7 +616,13 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
+			byte[][] prefixedKeys = new byte[keys.length][];
+			for (int i = 0; i < keys.length; i++) {
+				prefixedKeys[i] = toKeyWithPrefix(keys[i]);
+			}
+			Long removed = engine.getCastUtil().toLong(conn.call("DEL", prefixedKeys), null);
+			if (removed != null && removed > 0) cacheRemoveCount.addAndGet(removed);
+			return removed != null && removed > 0;
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -477,6 +643,7 @@ public class RedisCache extends CacheSupport implements Command {
 			if (lkeys == null || lkeys.size() == 0) return 0;
 			Long rtn = engine.getCastUtil().toLong(conn.call("DEL", lkeys), null);
 			if (rtn == null) return 0;
+			cacheRemoveCount.addAndGet(rtn);
 			return rtn.intValue();
 		}
 		catch (Exception e) {
@@ -494,7 +661,9 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			return toList((List<byte[]>) conn.call("KEYS", "*"));
+			String pattern = getPatternWithPrefix("*");
+			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", pattern);
+			return toListStripPrefix(bkeys);
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -530,7 +699,8 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<byte[]> _bkeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
+		String pattern = isWildCardFilter ? getPatternWithPrefix(filter.toPattern()) : getPatternWithPrefix("*");
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", pattern);
 		List<byte[]> list = new ArrayList<byte[]>();
 		if (skeys == null || skeys.size() == 0) return list;
 
@@ -538,7 +708,9 @@ public class RedisCache extends CacheSupport implements Command {
 		byte[] key;
 		while (it.hasNext()) {
 			key = it.next();
-			if (all || filter.accept(new String(key, UTF8))) list.add(key);
+			// For filter comparison, use the key without prefix
+			String strippedKey = stripPrefix(key);
+			if (all || filter.accept(strippedKey)) list.add(key);
 		}
 		return list;
 	}
@@ -546,15 +718,18 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<String> _skeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
+		String pattern = isWildCardFilter ? getPatternWithPrefix(filter.toPattern()) : getPatternWithPrefix("*");
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", pattern);
 		List<String> list = new ArrayList<String>();
-		Iterator<byte[]> it = skeys.iterator();
 		if (skeys == null || skeys.size() == 0) return list;
 
+		Iterator<byte[]> it = skeys.iterator();
 		byte[] key;
 		while (it.hasNext()) {
 			key = it.next();
-			if (all || filter.accept(new String(key, UTF8))) list.add(new String(key, UTF8));
+			// Return key without prefix
+			String strippedKey = stripPrefix(key);
+			if (all || filter.accept(strippedKey)) list.add(strippedKey);
 		}
 		return list;
 	}
@@ -584,7 +759,11 @@ public class RedisCache extends CacheSupport implements Command {
 				byte[] k;
 				for (byte[] val: values) {
 					k = keys[i++];
-					list.add(new RedisCacheEntry(this, k, val == null ? null : Coder.evaluate(cl, val), val == null ? 0 : val.length));
+					Object evaluated = null;
+					if (val != null) {
+						evaluated = safeDeserializeOrDefault(val, stripPrefix(k), null);
+					}
+					list.add(new RedisCacheEntry(this, k, evaluated, val == null ? 0 : val.length));
 				}
 			}
 			else {
@@ -597,7 +776,12 @@ public class RedisCache extends CacheSupport implements Command {
 					catch (Exception jde) {
 						if (log != null) log.error("redis-cache", jde);
 					}
-					if (val != null) list.add(new RedisCacheEntry(this, key, Coder.evaluate(cl, val), val.length));
+					if (val != null) {
+						Object evaluated = safeDeserializeOrDefault(val, stripPrefix(key), null);
+						if (evaluated != null) {
+							list.add(new RedisCacheEntry(this, key, evaluated, val.length));
+						}
+					}
 				}
 			}
 			return list;
@@ -632,8 +816,15 @@ public class RedisCache extends CacheSupport implements Command {
 			if (lkeys == null || lkeys.size() == 0) return list;
 
 			List<byte[]> values = (List<byte[]>) conn.call("MGET", lkeys);
-			for (byte[] val: values) {
-				list.add(Coder.evaluate(cl, val));
+			for (int i = 0; i < values.size(); i++) {
+				byte[] val = values.get(i);
+				if (val != null) {
+					String keyForLog = i < lkeys.size() ? stripPrefix(lkeys.get(i)) : "unknown";
+					Object evaluated = safeDeserializeOrDefault(val, keyForLog, null);
+					if (evaluated != null) {
+						list.add(evaluated);
+					}
+				}
 			}
 			return list;
 		}
@@ -649,12 +840,36 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public long hitCount() {
-		return 0; // TODO To change body of implemented methods use File | Settings | File Templates.
+		return cacheHitCount.get();
 	}
 
 	@Override
 	public long missCount() {
-		return 0; // TODO To change body of implemented methods use File | Settings | File Templates.
+		return cacheMissCount.get();
+	}
+
+	/**
+	 * Get the total number of put operations.
+	 */
+	public long putCount() {
+		return cachePutCount.get();
+	}
+
+	/**
+	 * Get the total number of remove operations.
+	 */
+	public long removeCount() {
+		return cacheRemoveCount.get();
+	}
+
+	/**
+	 * Reset all cache statistics counters.
+	 */
+	public void resetStats() {
+		cacheHitCount.set(0);
+		cacheMissCount.set(0);
+		cachePutCount.set(0);
+		cacheRemoveCount.set(0);
 	}
 
 	@Override
@@ -665,6 +880,27 @@ public class RedisCache extends CacheSupport implements Command {
 			byte[] barr = (byte[]) conn.call("INFO");
 			Struct data = barr == null ? engine.getCreationUtil().createStruct() : InfoParser.parse(CacheUtil.getInfo(this), new String((byte[]) conn.call("INFO"), Coder.UTF8));
 			data.set("connectionPool", getPoolInfo());
+
+			// Add cache statistics
+			Struct stats = engine.getCreationUtil().createStruct();
+			stats.set("hitCount", cacheHitCount.get());
+			stats.set("missCount", cacheMissCount.get());
+			stats.set("putCount", cachePutCount.get());
+			stats.set("removeCount", cacheRemoveCount.get());
+			long total = cacheHitCount.get() + cacheMissCount.get();
+			if (total > 0) {
+				stats.set("hitRatio", (double) cacheHitCount.get() / total);
+			}
+			else {
+				stats.set("hitRatio", 0.0);
+			}
+			data.set("cacheStatistics", stats);
+
+			// Add configuration info
+			if (keyPrefix != null) {
+				data.set("keyPrefix", keyPrefix);
+			}
+
 			return data;
 		}
 		catch (Exception e) {
@@ -683,6 +919,20 @@ public class RedisCache extends CacheSupport implements Command {
 			Iterator<byte[]> it = keys.iterator();
 			while (it.hasNext()) {
 				list.add(new String(it.next(), Coder.UTF8));
+			}
+		}
+		return list;
+	}
+
+	/**
+	 * Convert byte array keys to string list, stripping prefix if configured.
+	 */
+	protected List<String> toListStripPrefix(Collection<byte[]> keys) throws IOException {
+		List<String> list = new ArrayList<String>();
+		if (keys != null) {
+			Iterator<byte[]> it = keys.iterator();
+			while (it.hasNext()) {
+				list.add(stripPrefix(it.next()));
 			}
 		}
 		return list;
@@ -711,7 +961,9 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
+			// Only delete keys matching our prefix (or all keys if no prefix)
+			String pattern = getPatternWithPrefix("*");
+			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", pattern);
 			if (bkeys == null || bkeys.size() == 0) return 0;
 			return engine.getCastUtil().toIntValue(conn.call("DEL", bkeys), 0);
 		}
@@ -730,6 +982,11 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	protected Redis getConnection(boolean onlyIfSufficent, long timeout) throws IOException {
+		// Check circuit breaker first for fast fail
+		if (circuitBreaker != null && !circuitBreaker.allowRequest()) {
+			throw new IOException("Circuit breaker is open - Redis operations temporarily disabled. Failures: " + circuitBreaker.getFailureCount());
+		}
+
 		long start = timeout > 0 ? System.currentTimeMillis() : 0;
 		while (pool == null) {
 			if (log != null) log.debug("redis-cache", "waiting for the pool");
@@ -795,15 +1052,23 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	private Redis borrow(long timeout) throws IOException {
+		// Use retry logic if resilience is enabled
+		if (resilientOps != null && retryPolicy != null) {
+			return retryPolicy.execute(() -> borrowOnce(timeout), "borrow connection");
+		}
+		return borrowOnce(timeout);
+	}
+
+	private Redis borrowOnce(long timeout) throws IOException {
 		try {
 			Redis redis;
 			if (timeout > 0) {
 				redis = pool.borrowObject(timeout);
-				if (redis == null) throw new IOException("could not aquire a connection within the given time (connection timeout " + timeout + "ms).");
+				if (redis == null) throw new IOException("could not acquire a connection within the given time (connection timeout " + timeout + "ms).");
 				return redis;
 			}
 			redis = pool.borrowObject();
-			if (redis == null) throw new IOException("could not aquire a lock.");
+			if (redis == null) throw new IOException("could not acquire a connection.");
 			return redis;
 		}
 		catch (Exception e) {
@@ -878,11 +1143,34 @@ public class RedisCache extends CacheSupport implements Command {
 		private long current = Long.MIN_VALUE;
 		private final Object tokenAddToNear = new Object();
 		private final Object tokenAddToCache = new Object();
+		private volatile boolean running = true;
+		private volatile boolean shuttingDown = false;
 
 		public Storage(RedisCache cache) {
 			this.engine = CFMLEngineFactory.getInstance();
 			this.cache = cache;
 			this.entries = new ConcurrentLinkedDeque<>();
+			setName("redis-storage-" + System.identityHashCode(cache));
+			setDaemon(true);
+		}
+
+		/**
+		 * Signal the thread to stop gracefully.
+		 * Will finish processing any pending entries before stopping.
+		 */
+		public void shutdown() {
+			shuttingDown = true;
+			running = false;
+			synchronized (tokenAddToNear) {
+				tokenAddToNear.notifyAll();
+			}
+		}
+
+		/**
+		 * Check if shutdown has been requested.
+		 */
+		public boolean isShuttingDown() {
+			return shuttingDown;
 		}
 
 		public NearCacheEntry get(byte[] bkey) {
@@ -901,6 +1189,7 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 
 		public void doJoin(long count, boolean one) {
+			if (shuttingDown) return;
 
 			long startCurr = getCurrent();
 			if (startCurr > count || entries.isEmpty()) {
@@ -911,7 +1200,7 @@ public class RedisCache extends CacheSupport implements Command {
 			int max = 100;
 			long curr;
 			// if we have entries, we wait until there are no entries anymore or they are newer than the request
-			while (true) {
+			while (running && !shuttingDown) {
 				if (--max <= 0) {
 					break;
 				}
@@ -943,32 +1232,76 @@ public class RedisCache extends CacheSupport implements Command {
 
 		@Override
 		public void run() {
-			while (true) {
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread started");
+
+			while (running) {
 				NearCacheEntry entry;
 				try {
+					// Process all pending entries
 					while ((entry = entries.poll()) != null) {
 						current = entry.count();
-						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						try {
+							cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						}
+						catch (IOException e) {
+							if (cache.log != null) cache.log.error("redis-cache", "Failed to store entry: " + e.getMessage());
+							// Re-queue the entry for retry if not shutting down
+							if (!shuttingDown) {
+								entries.addFirst(entry);
+								// Wait before retrying
+								Thread.sleep(1000);
+								break;
+							}
+						}
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();
 						}
 					}
-					synchronized (tokenAddToNear) {
-						if (entries.isEmpty()) tokenAddToNear.wait();
+
+					// Wait for more entries (unless shutting down)
+					if (running && !shuttingDown) {
+						synchronized (tokenAddToNear) {
+							if (entries.isEmpty()) {
+								tokenAddToNear.wait(5000); // Use timeout to periodically check running flag
+							}
+						}
 					}
+				}
+				catch (InterruptedException e) {
+					if (cache.log != null) cache.log.debug("redis-cache", "Storage thread interrupted");
+					Thread.currentThread().interrupt();
+					break;
 				}
 				catch (Throwable e) {
 					if (cache.log != null) cache.log.error("redis-cache", e);
-					synchronized (this) {
+					if (running && !shuttingDown) {
 						try {
-							this.wait(1000); // slow down in case of an issue
+							Thread.sleep(1000); // slow down in case of an issue
 						}
-						catch (Exception ie) {
-							if (cache.log != null) cache.log.error("redis-cache", ie);
+						catch (InterruptedException ie) {
+							Thread.currentThread().interrupt();
+							break;
 						}
 					}
 				}
 			}
+
+			// Final flush - process any remaining entries
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread shutting down, flushing " + entries.size() + " remaining entries");
+			NearCacheEntry entry;
+			int remaining = entries.size();
+			int flushed = 0;
+			while ((entry = entries.poll()) != null && flushed < remaining + 10) { // Limit to prevent infinite loop
+				try {
+					cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+					flushed++;
+				}
+				catch (IOException e) {
+					if (cache.log != null) cache.log.error("redis-cache", "Failed to flush entry during shutdown: " + e.getMessage());
+				}
+			}
+
+			if (cache.log != null) cache.log.debug("redis-cache", "Storage thread stopped, flushed " + flushed + " entries");
 		}
 
 		private static boolean equals(byte[] left, byte[] right) {
@@ -1037,6 +1370,13 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	public void invalidateConnection(Redis conn) {
+		// Record failure in circuit breaker
+		if (circuitBreaker != null) {
+			circuitBreaker.recordFailure();
+			if (log != null && circuitBreaker.getState() == CircuitBreaker.State.OPEN) {
+				log.warn("redis-cache", "Circuit breaker OPENED after " + circuitBreaker.getFailureCount() + " failures");
+			}
+		}
 		try {
 			if (conn != null) pool.invalidateObject(conn);
 		}
@@ -1053,6 +1393,74 @@ public class RedisCache extends CacheSupport implements Command {
 		return true;
 	}
 
+	/**
+	 * Shutdown the cache and release all resources.
+	 * This method should be called when the cache is no longer needed.
+	 */
+	public void shutdown() {
+		if (log != null) log.debug("redis-cache", "Shutting down Redis cache");
+
+		// Shutdown the storage thread
+		if (storage != null) {
+			storage.shutdown();
+			try {
+				storage.join(5000); // Wait up to 5 seconds for thread to finish
+			}
+			catch (InterruptedException e) {
+				if (log != null) log.warn("redis-cache", "Interrupted while waiting for storage thread to stop");
+				Thread.currentThread().interrupt();
+			}
+		}
+
+		// Shutdown resilience components
+		if (resilientOps != null) {
+			resilientOps.shutdown();
+		}
+
+		// Close the pool
+		if (pool != null) {
+			pool.close();
+		}
+
+		if (log != null) log.debug("redis-cache", "Redis cache shutdown complete");
+	}
+
+	/**
+	 * Check if the circuit breaker is currently open (failing fast).
+	 *
+	 * @return true if circuit breaker is open
+	 */
+	public boolean isCircuitBreakerOpen() {
+		return circuitBreaker != null && circuitBreaker.isOpen();
+	}
+
+	/**
+	 * Get the current circuit breaker state.
+	 *
+	 * @return Circuit breaker state, or null if not enabled
+	 */
+	public CircuitBreaker.State getCircuitBreakerState() {
+		return circuitBreaker != null ? circuitBreaker.getState() : null;
+	}
+
+	/**
+	 * Reset the circuit breaker to allow operations again.
+	 * Use this for manual recovery after fixing the underlying issue.
+	 */
+	public void resetCircuitBreaker() {
+		if (circuitBreaker != null) {
+			circuitBreaker.reset();
+			if (log != null) log.info("redis-cache", "Circuit breaker manually reset");
+		}
+	}
+
+	/**
+	 * Check if resilience features are enabled.
+	 */
+	public boolean isResilienceEnabled() {
+		return resilienceEnabled;
+	}
+
 	private String choose(String v1, String v2) {
 		if (!Util.isEmpty(v1, true)) return v1.trim();
 		if (!Util.isEmpty(v2, true)) return v2.trim();
@@ -1063,6 +1471,254 @@ public class RedisCache extends CacheSupport implements Command {
 		if (v1 != 0) return v1;
 		if (v2 != 0) return v2;
 		return 0;
+	}
+
+	/**
+	 * Safely deserialize a byte array into an object with comprehensive error handling.
+	 * This method provides better error messages and logging when deserialization fails.
+	 *
+	 * @param data The byte array to deserialize
+	 * @param keyForLogging The key being accessed (for error logging)
+	 * @return The deserialized object, or the raw data as string if deserialization fails
+	 * @throws IOException If deserialization fails and cannot recover
+	 */
+	protected Object safeDeserialize(byte[] data, String keyForLogging) throws IOException {
+		if (data == null) {
+			return null;
+		}
+
+		try {
+			return Coder.evaluate(cl, data);
+		}
+		catch (IOException e) {
+			// Log the error with context
+			if (log != null) {
+				log.error("redis-cache", "Deserialization failed for key [" + keyForLogging + "]: " + e.getMessage() + ". Data length: " + data.length + " bytes.");
+			}
+
+			// Check if this looks like it might be a class loading issue
+			String message = e.getMessage();
+			if (message != null && (message.contains("ClassNotFoundException") || message.contains("class not found"))) {
+				if (log != null) {
+					log.warn("redis-cache", "Class not found during deserialization. This may indicate version mismatch between servers or missing classes.");
+				}
+			}
+
+			// Re-throw with more context
+			throw new IOException("Failed to deserialize cache entry for key [" + keyForLogging + "]: " + e.getMessage(), e);
+		}
+		catch (Exception e) {
+			// Catch any unexpected exceptions
+			if (log != null) {
+				log.error("redis-cache", "Unexpected error during deserialization for key [" + keyForLogging + "]: " + e.getClass().getName() + " - " + e.getMessage());
+			}
+			throw new IOException("Unexpected deserialization error for key [" + keyForLogging + "]", e);
+		}
+	}
+
+	/**
+	 * Safely deserialize with a default value on failure.
+	 * Use this variant when you want graceful degradation instead of exceptions.
+	 *
+	 * @param data The byte array to deserialize
+	 * @param keyForLogging The key being accessed
+	 * @param defaultValue Value to return if deserialization fails
+	 * @return The deserialized object, or defaultValue if deserialization fails
+	 */
+	protected Object safeDeserializeOrDefault(byte[] data, String keyForLogging, Object defaultValue) {
+		if (data == null) {
+			return defaultValue;
+		}
+
+		try {
+			return Coder.evaluate(cl, data);
+		}
+		catch (Exception e) {
+			if (log != null) {
+				log.warn("redis-cache", "Deserialization failed for key [" + keyForLogging + "], returning default value: " + e.getMessage());
+			}
+			return defaultValue;
+		}
+	}
+
+	/**
+	 * Clone an object by serializing and deserializing it.
+	 * This ensures that the returned object is completely independent of the cached version.
+	 *
+	 * @param value The value to clone
+	 * @return A cloned copy of the value
+	 * @throws IOException If serialization/deserialization fails
+	 */
+	protected Object cloneValue(Object value) throws IOException {
+		if (value == null) {
+			return null;
+		}
+		// Simple types don't need cloning (immutable)
+		if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+			return value;
+		}
+		// Re-serialize and deserialize to create a true clone
+		byte[] serialized = Coder.serialize(value);
+		return Coder.evaluate(cl, serialized);
+	}
+
+	/**
+	 * Check if always clone mode is enabled.
+	 *
+	 * @return true if objects are always cloned on retrieval
+	 */
+	public boolean isAlwaysClone() {
+		return alwaysClone;
+	}
+
+	/**
+	 * Apply key prefix to a key for namespace isolation.
+	 *
+	 * @param key The original key
+	 * @return The prefixed key as bytes
+	 */
+	protected byte[] toKeyWithPrefix(String key) {
+		byte[] baseKey = Coder.toKey(key);
+		return applyPrefix(baseKey);
+	}
+
+	/**
+	 * Apply key prefix to byte array key.
+	 *
+	 * @param key The original key as bytes
+	 * @return The prefixed key as bytes
+	 */
+	protected byte[] applyPrefix(byte[] key) {
+		if (keyPrefixBytes == null || keyPrefixBytes.length == 0) {
+			return key;
+		}
+		byte[] prefixedKey = new byte[keyPrefixBytes.length + key.length];
+		System.arraycopy(keyPrefixBytes, 0, prefixedKey, 0, keyPrefixBytes.length);
+		System.arraycopy(key, 0, prefixedKey, keyPrefixBytes.length, key.length);
+		return prefixedKey;
+	}
+
+	/**
+	 * Strip key prefix from a key.
+	 *
+	 * @param key The prefixed key as bytes
+	 * @return The original key without prefix as string
+	 */
+	protected String stripPrefix(byte[] key) {
+		if (keyPrefixBytes == null || keyPrefixBytes.length == 0) {
+			return new String(key, Coder.UTF8);
+		}
+		if (key.length > keyPrefixBytes.length) {
+			byte[] stripped = new byte[key.length - keyPrefixBytes.length];
+			System.arraycopy(key, keyPrefixBytes.length, stripped, 0, stripped.length);
+			return new String(stripped, Coder.UTF8);
+		}
+		return new String(key, Coder.UTF8);
+	}
+
+	/**
+	 * Get the pattern for KEYS command with prefix applied.
+	 *
+	 * @param pattern The original pattern
+	 * @return The prefixed pattern
+	 */
+	protected String getPatternWithPrefix(String pattern) {
+		if (keyPrefix == null) {
+			return pattern;
+		}
+		return keyPrefix + pattern;
+	}
+
+	/**
+	 * Get the current key prefix.
+	 *
+	 * @return The key prefix or null if not set
+	 */
+	public String getKeyPrefix() {
+		return keyPrefix;
+	}
+
+	/**
+	 * Check if session locking is enabled.
+	 *
+	 * @return true if session locking is enabled
+	 */
+	public boolean isSessionLockingEnabled() {
+		return sessionLockingEnabled;
+	}
+
+	/**
+	 * Get the SessionLockManager for this cache.
+	 * Creates the manager lazily on first access.
+	 *
+	 * @return The SessionLockManager instance
+	 */
+	public synchronized SessionLockManager getSessionLockManager() {
+		if (sessionLockManager == null) {
+			String lockPrefix = keyPrefix != null ? keyPrefix + "_lock:" : "_lock:";
+			sessionLockManager = new SessionLockManager(this, sessionLockExpiration, sessionLockTimeout, lockPrefix);
+		}
+		return sessionLockManager;
+	}
+
+	/**
+	 * Convenience method to acquire a session lock.
+	 * Only works if session locking is enabled.
+	 *
+	 * @param sessionKey The session key to lock
+	 * @return A Lock object, or null if locking is disabled or lock could not be acquired
+	 * @throws IOException If a Redis error occurs
+	 */
+	public SessionLockManager.Lock acquireSessionLock(String sessionKey) throws IOException {
+		if (!sessionLockingEnabled) {
+			return null;
+		}
+		return getSessionLockManager().acquireLock(sessionKey);
+	}
+
+	/**
+	 * Convenience method to try acquiring a session lock without blocking.
+	 * Only works if session locking is enabled.
+	 *
+	 * @param sessionKey The session key to lock
+	 * @return A Lock object, or null if locking is disabled or lock is already held
+	 * @throws IOException If a Redis error occurs
+	 */
+	public SessionLockManager.Lock tryAcquireSessionLock(String sessionKey) throws IOException {
+		if (!sessionLockingEnabled) {
+			return null;
+		}
+		return getSessionLockManager().tryAcquireLock(sessionKey);
+	}
+
+	/**
+	 * Get a metrics exporter for this cache.
+	 *
+	 * @param cacheName The name to use in metric labels
+	 * @return A RedisCacheMetrics instance
+	 */
+	public RedisCacheMetrics getMetrics(String cacheName) {
+		return new RedisCacheMetrics(this, cacheName);
+	}
+
+	/**
+	 * Get Prometheus-formatted metrics for this cache.
+	 *
+	 * @param cacheName The name to use in metric labels
+	 * @return Prometheus-formatted metrics string
+	 */
+	public String getPrometheusMetrics(String cacheName) {
+		return new RedisCacheMetrics(this, cacheName).exportPrometheusMetrics();
+	}
+
+	/**
+	 * Get JSON-formatted metrics for this cache.
+	 *
+	 * @param cacheName The name to use in metric labels
+	 * @return JSON-formatted metrics string
+	 */
+	public String getJsonMetrics(String cacheName) {
+		return new RedisCacheMetrics(this, cacheName).exportJsonMetrics();
 	}
 
 }

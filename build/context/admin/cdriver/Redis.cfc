@@ -1,6 +1,17 @@
 component extends="Cache" {
 	variables.fields = [
-		field(displayName = "Host",
+		group("Connection Mode","Choose the Redis deployment topology")
+		,field(displayName = "Connection Mode",
+			name = "connectionMode",
+			defaultValue = "standalone",
+			required = true,
+			description = "The Redis deployment mode: standalone (single server), sentinel (high availability with automatic failover), or cluster (distributed with sharding).",
+			type = "select",
+			values = "standalone,sentinel,cluster"
+		)
+
+		,group("Standalone Configuration","Settings for single Redis server (connectionMode=standalone)")
+		,field(displayName = "Host",
 			name = "host",
 			defaultValue = "localhost",
 			required = true,
@@ -14,6 +25,33 @@ component extends="Cache" {
 			description = "Port Redis is listening on.",
 			type = "text"
 		)
+
+		,group("Sentinel Configuration","Settings for Redis Sentinel (connectionMode=sentinel)")
+		,field(displayName = "Sentinel Master Name",
+			name = "sentinelMasterName",
+			defaultValue = "mymaster",
+			required = false,
+			description = "The name of the master set configured in Sentinel.",
+			type = "text"
+		)
+		,field(displayName = "Sentinel Nodes",
+			name = "sentinelNodes",
+			defaultValue = "",
+			required = false,
+			description = "Comma-separated list of Sentinel nodes in host:port format (e.g., 'sentinel1:26379,sentinel2:26379,sentinel3:26379').",
+			type = "text"
+		)
+
+		,group("Cluster Configuration","Settings for Redis Cluster (connectionMode=cluster)")
+		,field(displayName = "Cluster Nodes",
+			name = "clusterNodes",
+			defaultValue = "",
+			required = false,
+			description = "Comma-separated list of cluster nodes in host:port format (e.g., 'node1:6379,node2:6379,node3:6379').",
+			type = "text"
+		)
+
+		,group("Security","")
 		,field(displayName = "SSL",
 			name = "ssl",
 			defaultValue = false,
@@ -70,8 +108,66 @@ component extends="Cache" {
 			type = "text"
 		)
 
+		,group("Key Namespace","Isolate keys from other applications sharing the same Redis instance")
+		,field(displayName = "Key Prefix",
+			name = "keyPrefix",
+			defaultValue = "",
+			required = false,
+			description = "Optional prefix for all cache keys (e.g., 'myapp:cache:'). Enables namespace isolation when multiple applications share the same Redis instance. A colon separator will be automatically appended if not present.",
+			type = "text"
+		)
+
+		,group("Session Locking","Distributed locking for safe multi-server session storage")
+		,field(displayName = "Enable Session Locking",
+			name = "sessionLockingEnabled",
+			defaultValue = false,
+			required = false,
+			description = "Enable distributed locking for session operations to prevent race conditions in multi-server environments. Disabled by default for backward compatibility.",
+			type = "checkbox",
+			values = true
+		)
+		,field(displayName = "Lock Expiration (seconds)",
+			name = "sessionLockExpiration",
+			defaultValue = 30,
+			required = false,
+			description = "Maximum time in seconds a lock can be held before auto-expiring. Prevents orphaned locks if a server crashes.",
+			type = "text"
+		)
+		,field(displayName = "Lock Timeout (ms)",
+			name = "sessionLockTimeout",
+			defaultValue = 5000,
+			required = false,
+			description = "Maximum time in milliseconds to wait when acquiring a lock before giving up.",
+			type = "text"
+		)
+
+		,group("Object Handling","Control how cached objects are returned")
+		,field(displayName = "Always Clone Objects",
+			name = "alwaysClone",
+			defaultValue = false,
+			required = false,
+			description = "When enabled, objects are cloned (re-serialized) on every get operation. This prevents modifications to returned objects from affecting the cached values, but adds overhead. Useful for debugging reference issues.",
+			type = "checkbox",
+			values = true
+		)
+
 		,group("Time Management","")
 		,field("Time to live in seconds","timeToLiveSeconds","0",true,"Sets the timeout to live for an element before it expires. If all fields are set to 0 the element live as long the server live.","time")
+		,field(displayName = "Idle Timeout (seconds)",
+			name = "idleTimeoutSeconds",
+			defaultValue = 0,
+			required = false,
+			description = "Idle timeout in seconds. When touchOnAccess is enabled and this value is > 0, the TTL will be reset to this value on each read (sliding expiration). Set to 0 to disable.",
+			type = "text"
+		)
+		,field(displayName = "Touch on Access",
+			name = "touchOnAccess",
+			defaultValue = false,
+			required = false,
+			description = "When enabled, resets the TTL to idleTimeoutSeconds on each cache read. This implements sliding expiration where entries stay alive as long as they are being accessed.",
+			type = "checkbox",
+			values = true
+		)
 		
 
 		,group("Pool","Connection to Redis are handled within a Pool, the following settings allows you to configure this pool.")
@@ -144,5 +240,59 @@ component extends="Cache" {
 
 	public string function getDescription() {
 		return "{desc}";
+	}
+
+	/**
+	 * Validates the cache configuration by attempting to connect to Redis.
+	 * Returns empty string on success, or a warning message on failure.
+	 * Does not throw an exception - allows editing even when Redis is unavailable.
+	 * This fixes Issue #17: Cannot edit an invalid cache connection in lucee admin.
+	 *
+	 * @param custom The configuration struct
+	 * @return Empty string on success, warning message on failure
+	 */
+	public string function validate(required struct custom) {
+		try {
+			var connectionMode = custom.connectionMode ?: "standalone";
+
+			// Validate based on connection mode
+			if (connectionMode == "standalone") {
+				var host = custom.host ?: "localhost";
+				var port = val(custom.port ?: 6379);
+				var socketTimeout = val(custom.socketTimeout ?: 2000);
+				var ssl = custom.ssl ?: false;
+
+				// Try to create a simple socket connection to validate connectivity
+				var socket = createObject("java", "java.net.Socket").init();
+				var socketAddress = createObject("java", "java.net.InetSocketAddress").init(host, port);
+
+				try {
+					socket.connect(socketAddress, socketTimeout);
+					socket.close();
+				}
+				catch (any e) {
+					// Return warning but don't prevent saving
+					return "Warning: Cannot connect to Redis at #host#:#port# - #e.message#. Configuration will be saved but cache may not work until Redis is available.";
+				}
+			}
+			else if (connectionMode == "sentinel") {
+				var sentinelNodes = custom.sentinelNodes ?: "";
+				if (len(trim(sentinelNodes)) == 0) {
+					return "Warning: Sentinel nodes not configured. Please provide at least one sentinel node.";
+				}
+			}
+			else if (connectionMode == "cluster") {
+				var clusterNodes = custom.clusterNodes ?: "";
+				if (len(trim(clusterNodes)) == 0) {
+					return "Warning: Cluster nodes not configured. Please provide at least one cluster node.";
+				}
+			}
+
+			return "";
+		}
+		catch (any e) {
+			// If validation itself fails, return warning but allow saving
+			return "Warning: Could not validate configuration - #e.message#. Configuration will be saved.";
+		}
 	}
 }
