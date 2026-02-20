@@ -1,4 +1,4 @@
-package lucee.extension.io.cache.redis.lock;
+package lucee.extension.io.cache.redis.tags.jakarta;
 
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;

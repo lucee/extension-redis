@@ -1,4 +1,4 @@
-package lucee.extension.io.cache.redis.lock;
+package lucee.extension.io.cache.redis.tags.jakarta;
 
 import jakarta.servlet.jsp.tagext.BodyContent;
 import jakarta.servlet.jsp.tagext.BodyTag;

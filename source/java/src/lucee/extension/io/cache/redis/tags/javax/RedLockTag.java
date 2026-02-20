@@ -1,7 +1,8 @@
-package lucee.extension.io.cache.redis.lock;
+package lucee.extension.io.cache.redis.tags.javax;
 
 import lucee.loader.util.Util;
 import lucee.runtime.exp.PageException;
+import lucee.runtime.util.Excepton;
 
 /**
  * Transaction class
@@ -73,13 +74,22 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	}
 
 	@Override
-	public int doStartTag() throws PageException {
+	public int doStartTag() {
 		if (bypass) return EVAL_BODY_INCLUDE;
-		if (Util.isEmpty(name)) throw engine.getExceptionUtil().createApplicationException("Name attribute cannot be empty!");
+		if (Util.isEmpty(name)) {
+			Excepton util = engine.getExceptionUtil();
+			throw util.createPageRuntimeException(util.createApplicationException("Name attribute cannot be empty!"));
+		}
 
-		lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, expires);
-		if (lock.lock(pageContext)) {
-			return EVAL_BODY_INCLUDE;
+		try {
+			lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, expires);
+			if (lock.lock(pageContext)) {
+				return EVAL_BODY_INCLUDE;
+			}
+		}
+		catch (PageException e) {
+			Excepton util = engine.getExceptionUtil();
+			throw util.createPageRuntimeException(e);
 		}
 
 		lock = null;
@@ -92,7 +102,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	}
 
 	@Override
-	public int doEndTag() throws PageException {
+	public int doEndTag() {
 		return EVAL_PAGE;
 	}
 
@@ -117,7 +127,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	}
 
 	@Override
-	public int doAfterBody() throws PageException {
+	public int doAfterBody() {
 		return super.doAfterBody();
 	}
 }

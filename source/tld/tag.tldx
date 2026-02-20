@@ -16,7 +16,9 @@
 	<!-- DistributedLock -->
 	<tag>
 		<name>DistributedLock</name>
-		<tag-class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.lock.RedLockTag</tag-class>
+		<tag-class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.tags.jakarta.RedLockTag</tag-class>
+		<jakarta-tag-class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.tags.jakarta.RedLockTag</jakarta-tag-class>
+		<javax-tag-class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.tags.javax.RedLockTag</javax-tag-class>
 		<body-content>must</body-content>
 		<body-rtexprvalue>false</body-rtexprvalue>
 		<handle-exception>true</handle-exception>

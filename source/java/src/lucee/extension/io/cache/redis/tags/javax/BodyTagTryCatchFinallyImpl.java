@@ -1,6 +1,7 @@
-package lucee.extension.io.cache.redis.lock;
+package lucee.extension.io.cache.redis.tags.javax;
 
-import jakarta.servlet.jsp.tagext.TryCatchFinally;
+import javax.servlet.jsp.tagext.TryCatchFinally;
+
 import lucee.runtime.exp.PageServletException;
 
 /**

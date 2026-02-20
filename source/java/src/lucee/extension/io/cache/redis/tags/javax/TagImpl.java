@@ -1,6 +1,7 @@
-package lucee.extension.io.cache.redis.lock;
+package lucee.extension.io.cache.redis.tags.javax;
 
-import jakarta.servlet.jsp.tagext.Tag;
+import javax.servlet.jsp.tagext.Tag;
+
 import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
@@ -20,18 +21,17 @@ public abstract class TagImpl implements Tag {
 		engine = CFMLEngineFactory.getInstance();
 	}
 
-	/**
-	 * sets a PageContext
-	 * 
-	 * @param pageContext
-	 */
 	public void setPageContext(PageContext pageContext) {
 		this.pageContext = pageContext;
 	}
 
 	@Override
+	public void setPageContext(javax.servlet.jsp.PageContext pageContext) {
+		this.pageContext = CFMLEngineFactory.getInstance().getThreadPageContext();
+	}
+
 	public void setPageContext(jakarta.servlet.jsp.PageContext pageContext) {
-		this.pageContext = (PageContext) pageContext;
+		this.pageContext = CFMLEngineFactory.getInstance().getThreadPageContext();
 	}
 
 	@Override
@@ -45,12 +45,12 @@ public abstract class TagImpl implements Tag {
 	}
 
 	@Override
-	public int doStartTag() throws PageException {
+	public int doStartTag() {
 		return SKIP_BODY;
 	}
 
 	@Override
-	public int doEndTag() throws PageException {
+	public int doEndTag() {
 		return EVAL_PAGE;
 	}
 
