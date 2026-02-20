@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>4.0.1.0-SNAPSHOT</version>
+    <version>4.0.1.1-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
@@ -14,7 +14,7 @@
         <maven.compiler.target>11</maven.compiler.target>
         <id>60772C12-F179-D555-8E2CD2B4F7428718</id>
         <bundlename>redis.extension</bundlename>
-        <luceeCoreVersion>6.2.5.38-SNAPSHOT</luceeCoreVersion>
+        <luceeCoreVersion>6.0.0.0</luceeCoreVersion>
         <releaseType>server</releaseType>
         <label>Redis Extension for Jakarta EE (Lucee 7+)</label>
         <camelname>Redis</camelname>
