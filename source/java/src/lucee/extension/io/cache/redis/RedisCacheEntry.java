@@ -61,7 +61,8 @@ public class RedisCacheEntry implements CacheEntry {
 
 	@Override
 	public String getKey() {
-		return Coder.toKey(bkey);
+		// Strip the key prefix if one is configured
+		return cache.stripPrefix(bkey);
 	}
 
 	@Override
