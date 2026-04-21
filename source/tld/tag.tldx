@@ -26,27 +26,27 @@
 			<type>multiple</type>
 			<rtexprvalue>true</rtexprvalue>
 		</script>
-		<description>Redis based lock that can be used across servers</description>
+		<description>A Redis-backed distributed lock that coordinates access to a shared resource across multiple servers or threads. 
+		Unlike a local cflock, this tag uses Redis as the shared state store, making it safe to use in clustered and multi-server environments.
+		The body of the tag executes only once a lock slot is successfully acquired. If the lock cannot be obtained within the timeout period,
+		execution either continues silently or throws an exception depending on the throwOnTimeout attribute.</description>
 		<attribute-type>fixed</attribute-type>
 		<attribute>
 			<type>string</type>
 			<name>name</name>
 			<required>true</required>
 			<rtexprvalue>true</rtexprvalue>
-			<description>Specifies the name of the lock.
-			Only {amount} (see attribute amount) request(s) can execute inside this tag with a given name. 
-			Therefore, providing the name attribute allows for synchronizing access
-			to resources from different parts of an application. 
-			Lock names are global to a server. 
-			They are shared between applications and user sessions, 
-			but not across clustered servers.</description>
+			<description>A unique name identifying the resource to lock. All tags sharing the same name compete for the same lock slot(s).
+			Lock names are global across the entire Redis cache — they are shared between applications, sessions, and servers connected to the same cache.
+			Use a specific, descriptive name to avoid accidental contention with unrelated locks (e.g. "invoiceExport" rather than "export").</description>
 		</attribute>
 		<attribute>
 			<type>string</type>
 			<name>cache</name>
 			<required>true</required>
 			<rtexprvalue>true</rtexprvalue>
-			<description>name of the redis cache used to lock.</description>
+			<description>The name of the Redis cache connection to use for storing the lock state.
+			This must match a Redis cache defined in the Lucee administrator. All servers competing for the same lock must reference the same cache.</description>
 		</attribute>
 		<attribute>
 			<type>numeric</type>
@@ -54,12 +54,9 @@
 			<required>false</required>
 			<default>0.01</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>
-				Specifies the maximum amount of time in seconds, to wait to obtain a lock.
-				If a lock can be obtained within the specified period, execution continues inside the body of the tag. 
-				Otherwise, the behavior depends on the value of the throwOnTimeout attribute. 
-				The value must be at least 0.01.
-			</description>
+			<description>Maximum time in seconds to wait for a lock slot to become available. 
+			If a slot is freed within this period the body executes immediately; otherwise the behaviour is determined by throwOnTimeout.
+			Must be at least 0.01 (10ms). Default is 0.01.</description>
 		</attribute>
 		<attribute>
 			<type>boolean</type>
@@ -67,9 +64,9 @@
 			<required>false</required>
 			<default>false</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>Yes or No. Specifies how timeout conditions are handled.
-				If the value is Yes, an exception is generated to provide notification of the timeout.
-				If the value is No, execution continues past the cfclock tag. Default is No.</description>
+			<description>Controls what happens when the timeout is reached without acquiring a lock.
+			If true, an application exception is thrown and the body does not execute.
+			If false, execution continues silently past the tag body. Default is false.</description>
 		</attribute>
 		<attribute>
 			<type>boolean</type>
@@ -77,15 +74,17 @@
 			<required>false</required>
 			<default>true</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>In case we reach a timeout, and the value is set to yes, we log this to the application.log. Default is Yes.</description>
+			<description>When true, a warning is written to the log (see the log attribute) if the timeout is reached without acquiring a lock.
+			Useful for detecting contention in production without throwing exceptions. Default is true.</description>
 		</attribute>
 		<attribute>
 			<type>string</type>
 			<name>log</name>
 			<required>false</required>
-			<default>application</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>name of the log used to log information. Default is "application".</description>
+			<description>Name of the Lucee log to write lock lifecycle events to (acquire, release, timeout, errors).
+			If not specified, the tag attempts to resolve a log in this order: "distributedlock", "redis", "application".
+			Use this attribute to route lock events to a dedicated log file for easier monitoring.</description>
 		</attribute>
 		<attribute>
 			<type>numeric</type>
@@ -93,7 +92,10 @@
 			<required>false</required>
 			<default>1</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>Defines the amount of parallel threads allowed within the lock, default is 1.</description>
+			<description>The number of threads or requests permitted to execute inside the lock body concurrently.
+			When set to 1 (the default) the lock behaves as a mutex — only one caller executes at a time.
+			Values greater than 1 turn the lock into a semaphore, allowing that many concurrent executions.
+			All callers beyond the limit wait until a slot is freed or the timeout is reached.</description>
 		</attribute>
 		<attribute>
 			<type>numeric</type>
@@ -101,7 +103,9 @@
 			<required>false</required>
 			<default>600</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>The time in seconds a lock remains in case it not get released, by default this is 10 minutes.</description>
+			<description>Maximum time in seconds that a lock slot is held in Redis before it is automatically released, even if the tag body has not finished or release failed.
+			This acts as a safety net against leaked locks caused by server crashes or unhandled exceptions.
+			Set this to comfortably exceed the longest expected execution time of the tag body. Default is 600 seconds (10 minutes).</description>
 		</attribute>
 		<attribute>
 			<type>boolean</type>
@@ -109,7 +113,8 @@
 			<required>false</required>
 			<default>false</default>
 			<rtexprvalue>true</rtexprvalue>
-			<description>If set to true the lock is not done at all.</description>
+			<description>When true, the lock is skipped entirely and the tag body executes immediately without acquiring or releasing any Redis lock.
+			Intended for development, testing, or temporary disabling of locking without removing the tag from code. Default is false.</description>
 		</attribute>
 	</tag>
 </taglib>
