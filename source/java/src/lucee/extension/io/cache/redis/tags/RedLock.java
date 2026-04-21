@@ -1,5 +1,6 @@
 package lucee.extension.io.cache.redis.tags;
 
+import lucee.commons.io.log.Log;
 import lucee.extension.io.cache.redis.udf.RedisCommand;
 import lucee.extension.io.cache.redis.udf.RedisCommandLowPriority;
 import lucee.loader.engine.CFMLEngine;
@@ -40,6 +41,8 @@ public class RedLock {
 
 	private String logName;
 
+	private Log log;
+
 	public RedLock(String name, String cacheName, int amount, long timeout, boolean throwontimeout, boolean logontimeout, String logName, int expires) throws PageException {
 		engine = CFMLEngineFactory.getInstance();
 
@@ -66,11 +69,33 @@ public class RedLock {
 		this.lockNameOpen = this.lockNamePrefix + "open";
 		this.lockNameClose = this.lockNamePrefix + "close";
 
-		this.logName = Util.isEmpty(logName, true) ? "application" : logName;
+		// log
+		this.logName = Util.isEmpty(logName, true) ? null : logName;
 
-		Config config = CFMLEngineFactory.getInstance().getThreadConfig();
-		if (config != null) config.getLog(logName).info("DistributedLock", "RedLock initialised: name=[" + this.name + "] cache=[" + this.cacheName + "] amount=[" + this.amount
-				+ "] timeout=[" + timeoutInSeconds() + "s] expires=[" + this.expires + "s]");
+		log(CFMLEngineFactory.getInstance().getThreadConfig(), Log.LEVEL_INFO, "RedLock initialised: name=[" + this.name + "] cache=[" + this.cacheName + "] amount=[" + this.amount
+				+ "] timeout=[" + timeoutInSeconds() + "s] expires=[" + this.expires + "s]", null);
+	}
+
+	private void log(Config config, int level, String msg, Exception ex) {
+		if (config == null) return;
+
+		if (log == null) {
+			if (logName != null) {
+				log = config.getLog(logName);
+			}
+			// fallback or not defined
+			if (log == null) {
+				log = config.getLog("distributedlock");
+				if (log == null) log = config.getLog("redis");
+				if (log == null) log = config.getLog("application");
+			}
+		}
+		if (ex != null) {
+			log.log(level, "DistributedLock", msg, ex);
+		}
+		else {
+			log.log(level, "DistributedLock", msg);
+		}
 	}
 
 	/**
@@ -84,8 +109,8 @@ public class RedLock {
 	public boolean lock(PageContext pc) throws PageException {
 		release = false;
 
-		pc.getConfig().getLog(logName).info("DistributedLock",
-				"Attempting to acquire lock [" + name + "] (amount=" + amount + ", timeout=" + timeoutInSeconds() + "s, expires=" + expires + "s)");
+		log(pc.getConfig(), Log.LEVEL_INFO, "Attempting to acquire lock [" + name + "] (amount=" + amount + ", timeout=" + timeoutInSeconds() + "s, expires=" + expires + "s)",
+				null);
 
 		long acquireStart = System.currentTimeMillis();
 
@@ -120,8 +145,8 @@ public class RedLock {
 		cmd2.append(timeoutInSeconds());
 		commands.append(cmd2);
 
-		pc.getConfig().getLog(logName).info("DistributedLock",
-				"Sending BRPOPLPUSH to Redis: open=[" + lockNameOpen + "] close=[" + lockNameClose + "] blocking up to " + timeoutInSeconds() + "s");
+		log(pc.getConfig(), Log.LEVEL_INFO, "Sending BRPOPLPUSH to Redis: open=[" + lockNameOpen + "] close=[" + lockNameClose + "] blocking up to " + timeoutInSeconds() + "s",
+				null);
 
 		Array resArr = engine.getCastUtil().toArray(new RedisCommandLowPriority().invoke(pc, engine, commands, false, null, cacheName), null);
 		release = false;
@@ -131,7 +156,7 @@ public class RedLock {
 
 		// we could aquire a lock
 		if (hasResult) {
-			pc.getConfig().getLog(logName).info("DistributedLock", "Lock [" + name + "] acquired after " + elapsed + "ms, setting TTL on close list to " + expires + "s");
+			log(pc.getConfig(), Log.LEVEL_INFO, "Lock [" + name + "] acquired after " + elapsed + "ms, setting TTL on close list to " + expires + "s", null);
 
 			Array cmd = engine.getCreationUtil().createArray();
 			cmd.append("expire");
@@ -140,21 +165,20 @@ public class RedLock {
 
 			if (ONE.equals(engine.getCastUtil().toInteger(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null))) {
 				release = true;
-				pc.getConfig().getLog(logName).info("DistributedLock", "TTL set successfully on close list [" + lockNameClose + "], lock is fully established");
+				log(pc.getConfig(), Log.LEVEL_INFO, "TTL set successfully on close list [" + lockNameClose + "], lock is fully established", null);
 			}
 			else {
-				pc.getConfig().getLog(logName).info("DistributedLock",
-						"Warning: could not set TTL on close list [" + lockNameClose + "] — lock may expire unexpectedly, release flag not set");
+				log(pc.getConfig(), Log.LEVEL_WARN, "could not set TTL on close list [" + lockNameClose + "] — lock may expire unexpectedly, release flag not set", null);
 			}
 
 			return true;
 		}
 
-		pc.getConfig().getLog(logName).info("DistributedLock",
-				"Lock [" + name + "] not acquired after " + elapsed + "ms (BRPOPLPUSH returned no result, open=[" + lockNameOpen + "] close=[" + lockNameClose + "])");
+		log(pc.getConfig(), Log.LEVEL_INFO,
+				"Lock [" + name + "] not acquired after " + elapsed + "ms (BRPOPLPUSH returned no result, open=[" + lockNameOpen + "] close=[" + lockNameClose + "])", null);
 
 		if (logontimeout) {
-			pc.getConfig().getLog(logName).warn("DistributedLock", "reached timeout [" + timeoutInSeconds() + "] for lock [" + name + "]");
+			log(pc.getConfig(), Log.LEVEL_WARN, "reached timeout [" + timeoutInSeconds() + "] for lock [" + name + "]", null);
 		}
 		if (throwontimeout) {
 			throw engine.getExceptionUtil().createApplicationException("Could not aquire a distributed lock for the name [" + name + "] in [" + timeoutInSeconds() + "] seconds.");
@@ -177,8 +201,7 @@ public class RedLock {
 	public void release(PageContext pc) throws PageException {
 
 		if (release) {
-			pc.getConfig().getLog(logName).info("DistributedLock",
-					"Releasing lock [" + name + "]: moving token from close=[" + lockNameClose + "] back to open=[" + lockNameOpen + "]");
+			log(pc.getConfig(), Log.LEVEL_INFO, "Releasing lock [" + name + "]: moving token from close=[" + lockNameClose + "] back to open=[" + lockNameOpen + "]", null);
 
 			// slide to unlock
 			Array cmd = engine.getCreationUtil().createArray();
@@ -197,19 +220,19 @@ public class RedLock {
 			try {
 				Array res = engine.getCastUtil().toArray(new RedisCommand().invoke(pc, engine, cmd, false, null, cacheName), null);
 				if (res == null || res.get(2, null) == null) {
-					pc.getConfig().getLog(logName).info("DistributedLock", "Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired");
+					log(pc.getConfig(), Log.LEVEL_INFO, "Could not release the lock [" + name + "], as the lock was not found, maybe it had already expired", null);
 				}
 				else {
-					pc.getConfig().getLog(logName).info("DistributedLock", "Lock [" + name + "] released successfully: token returned to open list [" + lockNameOpen + "]");
+					log(pc.getConfig(), Log.LEVEL_INFO, "Lock [" + name + "] released successfully: token returned to open list [" + lockNameOpen + "]", null);
 				}
 			}
 			catch (Exception e) {
-				pc.getConfig().getLog(logName).error("DistributedLock", "Could not release the lock [" + name + "], as lock was not found, maybe it had already expired", e);
+				log(pc.getConfig(), Log.LEVEL_ERROR, "Could not release the lock [" + name + "], as lock was not found, maybe it had already expired", e);
 			}
 		}
 		else {
-			pc.getConfig().getLog(logName).info("DistributedLock",
-					"Release called for lock [" + name + "] but release flag is false — lock was never acquired or TTL set failed, skipping Redis call");
+			log(pc.getConfig(), Log.LEVEL_INFO, "Release called for lock [" + name + "] but release flag is false — lock was never acquired or TTL set failed, skipping Redis call",
+					null);
 		}
 	}
 }

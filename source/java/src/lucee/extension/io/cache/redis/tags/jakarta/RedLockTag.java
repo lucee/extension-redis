@@ -17,7 +17,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	private long timeout = 0L;
 	private boolean throwontimeout;
 	private boolean logontimeout = true;
-	private String log = "application";
+	private String log = null;
 	private RedLock lock;
 
 	@Override
@@ -30,7 +30,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		timeout = 0L;
 		this.throwontimeout = false;
 		this.logontimeout = true;
-		this.log = "application";
+		this.log = null;
 		lock = null;
 		super.release();
 	}
