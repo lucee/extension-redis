@@ -1,5 +1,6 @@
 package lucee.extension.io.cache.redis.tags.javax;
 
+import lucee.extension.io.cache.redis.tags.RedLock;
 import lucee.loader.util.Util;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.util.Excepton;
@@ -17,6 +18,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	private long timeout = 0L;
 	private boolean throwontimeout;
 	private boolean logontimeout = true;
+	private String log = "application";
 	private RedLock lock;
 
 	@Override
@@ -30,6 +32,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		this.throwontimeout = false;
 		this.logontimeout = true;
 		lock = null;
+		this.log = "application";
 		super.release();
 	}
 
@@ -68,6 +71,11 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		this.logontimeout = logontimeout;
 	}
 
+	public void setLog(String log) {
+		if (Util.isEmpty(log, true)) return;
+		this.log = log;
+	}
+
 	public void setExpires(double expires) throws PageException {
 		this.expires = (int) expires;
 		if (this.expires <= 0) this.expires = 600;
@@ -82,7 +90,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		}
 
 		try {
-			lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, expires);
+			lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, log, expires);
 			if (lock.lock(pageContext)) {
 				return EVAL_BODY_INCLUDE;
 			}

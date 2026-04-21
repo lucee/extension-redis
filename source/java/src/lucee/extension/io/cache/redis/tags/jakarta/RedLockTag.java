@@ -1,5 +1,6 @@
 package lucee.extension.io.cache.redis.tags.jakarta;
 
+import lucee.extension.io.cache.redis.tags.RedLock;
 import lucee.loader.util.Util;
 import lucee.runtime.exp.PageException;
 
@@ -16,6 +17,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 	private long timeout = 0L;
 	private boolean throwontimeout;
 	private boolean logontimeout = true;
+	private String log = "application";
 	private RedLock lock;
 
 	@Override
@@ -28,6 +30,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		timeout = 0L;
 		this.throwontimeout = false;
 		this.logontimeout = true;
+		this.log = "application";
 		lock = null;
 		super.release();
 	}
@@ -67,6 +70,11 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		this.logontimeout = logontimeout;
 	}
 
+	public void setLog(String log) {
+		if (Util.isEmpty(log, true)) return;
+		this.log = log;
+	}
+
 	public void setExpires(double expires) throws PageException {
 		this.expires = (int) expires;
 		if (this.expires <= 0) this.expires = 600;
@@ -77,7 +85,7 @@ public final class RedLockTag extends BodyTagTryCatchFinallyImpl {
 		if (bypass) return EVAL_BODY_INCLUDE;
 		if (Util.isEmpty(name)) throw engine.getExceptionUtil().createApplicationException("Name attribute cannot be empty!");
 
-		lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, expires);
+		lock = new RedLock(name, cache, amount, timeout, throwontimeout, logontimeout, log, expires);
 		if (lock.lock(pageContext)) {
 			return EVAL_BODY_INCLUDE;
 		}

@@ -80,6 +80,14 @@
 			<description>In case we reach a timeout, and the value is set to yes, we log this to the application.log. Default is Yes.</description>
 		</attribute>
 		<attribute>
+			<type>string</type>
+			<name>log</name>
+			<required>false</required>
+			<default>application</default>
+			<rtexprvalue>true</rtexprvalue>
+			<description>name of the log used to log information. Default is "application".</description>
+		</attribute>
+		<attribute>
 			<type>numeric</type>
 			<name>amount</name>
 			<required>false</required>
