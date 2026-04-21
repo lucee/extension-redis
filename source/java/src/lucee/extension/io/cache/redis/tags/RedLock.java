@@ -6,6 +6,7 @@ import lucee.loader.engine.CFMLEngine;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.loader.util.Util;
 import lucee.runtime.PageContext;
+import lucee.runtime.config.Config;
 import lucee.runtime.exp.PageException;
 import lucee.runtime.type.Array;
 
@@ -67,8 +68,9 @@ public class RedLock {
 
 		this.logName = Util.isEmpty(logName, true) ? "application" : logName;
 
-		pc.getConfig().getLog(logName).info("DistributedLock", "RedLock initialised: name=[" + this.name + "] cache=[" + this.cacheName + "] amount=[" + this.amount + "] timeout=["
-				+ timeoutInSeconds() + "s] expires=[" + this.expires + "s]");
+		Config config = CFMLEngineFactory.getInstance().getThreadConfig();
+		if (config != null) config.getLog(logName).info("DistributedLock", "RedLock initialised: name=[" + this.name + "] cache=[" + this.cacheName + "] amount=[" + this.amount
+				+ "] timeout=[" + timeoutInSeconds() + "s] expires=[" + this.expires + "s]");
 	}
 
 	/**
