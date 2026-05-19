@@ -25,7 +25,8 @@ public class NearCacheEntry implements CacheEntry {
 		this.count = count;
 	}
 
-	private NearCacheEntry(byte[] key, Object val, int exp, long count, byte[] serialized) {
+	// val may be null when serialized is supplied; serialized() returns the cached bytes without touching val.
+	NearCacheEntry(byte[] key, Object val, int exp, long count, byte[] serialized) {
 		this.key = key;
 		this.val = val;
 		this.exp = exp;

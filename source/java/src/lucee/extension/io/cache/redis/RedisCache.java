@@ -4,10 +4,12 @@ import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
@@ -408,14 +410,18 @@ public class RedisCache extends CacheSupport implements Command {
 	}
 
 	private void put(byte[] bkey, Object val, int exp) throws IOException {
+		putBytes(bkey, Coder.serialize(val), exp);
+	}
+
+	void putBytes(byte[] bkey, byte[] serialized, int exp) throws IOException {
 
 		Redis conn = getConnection();
 		try {
 			if (exp > 0) {
-				conn.pipeline().call("SET", bkey, Coder.serialize(val)).call("EXPIRE", bkey, Integer.toString(exp)).read();
+				conn.pipeline().call("SET", bkey, serialized).call("EXPIRE", bkey, Integer.toString(exp)).read();
 			}
 			else {
-				conn.call("SET", bkey, Coder.serialize(val));
+				conn.call("SET", bkey, serialized);
 			}
 		}
 		catch (Exception e) {
@@ -888,28 +894,22 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private static class Storage extends Thread {
 
-		private ConcurrentLinkedDeque<NearCacheEntry> entries;
+		// Map overwrites on duplicate puts (LDEV-6327); queue preserves drain order.
+		private final ConcurrentHashMap<ByteArrayWrapper, NearCacheEntry> entries;
+		private final ConcurrentLinkedQueue<ByteArrayWrapper> drainQueue;
 		private RedisCache cache;
-		private CFMLEngine engine;
 		private long current = Long.MIN_VALUE;
 		private final Object tokenAddToNear = new Object();
 		private final Object tokenAddToCache = new Object();
 
 		public Storage(RedisCache cache) {
-			this.engine = CFMLEngineFactory.getInstance();
 			this.cache = cache;
-			this.entries = new ConcurrentLinkedDeque<>();
+			this.entries = new ConcurrentHashMap<>();
+			this.drainQueue = new ConcurrentLinkedQueue<>();
 		}
 
 		public NearCacheEntry get(byte[] bkey) {
-			if (entries.isEmpty()) return null;
-			Object[] arr = entries.toArray();
-			NearCacheEntry e;
-			for (Object obj: arr) {
-				e = (NearCacheEntry) obj;
-				if (equals(e.getByteKey(), bkey)) return e;
-			}
-			return null;
+			return entries.get(new ByteArrayWrapper(bkey));
 		}
 
 		public long getCurrent() {
@@ -919,7 +919,7 @@ public class RedisCache extends CacheSupport implements Command {
 		public void doJoin(long count, boolean one) {
 
 			long startCurr = getCurrent();
-			if (startCurr > count || entries.isEmpty()) {
+			if (startCurr > count || drainQueue.isEmpty()) {
 				return;
 			}
 
@@ -935,7 +935,7 @@ public class RedisCache extends CacheSupport implements Command {
 				if (one && startCurr < curr) {
 					break;
 				}
-				if (curr > count || entries.isEmpty()) {
+				if (curr > count || drainQueue.isEmpty()) {
 					break;
 				}
 				synchronized (tokenAddToCache) {
@@ -950,8 +950,13 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 		}
 
-		public void put(byte[] bkey, Object val, int exp, long count) {
-			entries.add(new NearCacheEntry(bkey, val, exp, count));
+		public void put(byte[] bkey, Object val, int exp, long count) throws IOException {
+			// Serialise now so subsequent caller mutation cannot reach the cache (LDEV-4413 write-side).
+			byte[] bytes = Coder.serialize(val);
+			NearCacheEntry entry = new NearCacheEntry(bkey, null, exp, count, bytes);
+			ByteArrayWrapper wkey = new ByteArrayWrapper(bkey);
+			entries.put(wkey, entry);
+			drainQueue.offer(wkey);
 			synchronized (tokenAddToNear) {
 				tokenAddToNear.notifyAll();
 			}
@@ -960,17 +965,21 @@ public class RedisCache extends CacheSupport implements Command {
 		@Override
 		public void run() {
 			while (true) {
-				NearCacheEntry entry;
 				try {
-					while ((entry = entries.poll()) != null) {
+					ByteArrayWrapper wkey;
+					while ((wkey = drainQueue.poll()) != null) {
+						// Re-read from the map — a newer put may have overwritten since enqueue.
+						NearCacheEntry entry = entries.get(wkey);
+						if (entry == null) continue;
 						current = entry.count();
-						cache.put(entry.getByteKey(), entry.getValue(), entry.getExpires());
+						cache.putBytes(entry.getByteKey(), entry.serialized(), entry.getExpires());
+						entries.remove(wkey, entry);
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();
 						}
 					}
 					synchronized (tokenAddToNear) {
-						if (entries.isEmpty()) tokenAddToNear.wait();
+						if (drainQueue.isEmpty()) tokenAddToNear.wait();
 					}
 
 					if (cache.get__test__writeCommitDelay_ms() != null) {
@@ -991,13 +1000,26 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 		}
 
-		private static boolean equals(byte[] left, byte[] right) {
-			if (left.length != right.length) return false;
+		private static final class ByteArrayWrapper {
+			private final byte[] data;
+			private final int hash;
 
-			for (int i = 0; i < left.length; i++) {
-				if (left[i] != right[i]) return false;
+			ByteArrayWrapper(byte[] data) {
+				this.data = data;
+				this.hash = Arrays.hashCode(data);
 			}
-			return true;
+
+			@Override
+			public boolean equals(Object o) {
+				if (this == o) return true;
+				if (!(o instanceof ByteArrayWrapper)) return false;
+				return Arrays.equals(data, ((ByteArrayWrapper) o).data);
+			}
+
+			@Override
+			public int hashCode() {
+				return hash;
+			}
 		}
 	}
 
