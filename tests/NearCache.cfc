@@ -42,20 +42,45 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
     }
 
     function run() {
-        describe("NearCacheEntriesAreCopiedOnReadPriorToWriteCommit", () => {
-            it("does not return 'the same object' from a cacheGet call", () => {
+        describe("Near cache regression tests", () => {
+            it("LDEV-4413 mutating a cacheGet result does not mutate the cached value", () => {
                 var someObj = {v: 42}
                 var key = "redis-test/#createGuid()#";
-                
+
                 cachePut(key = key, value = someObj, cacheName = cacheName);
 
                 var fromCache = cacheGet(key = key, cacheName = cacheName);
-                
+
                 expect(fromCache.v).toBe(42);
-                
+
                 fromCache.v += 1;
-                
+
                 expect(someObj.v).toBe(42, "mutating 'fromCache' did not mutate the initial cache source 'someObj'");
+            })
+
+            it("LDEV-4413 mutating the original value after cachePut does not leak into the cache", () => {
+                var someObj = {v: 42}
+                var key = "redis-test/#createGuid()#";
+
+                cachePut(key = key, value = someObj, cacheName = cacheName);
+
+                // Caller mutates after put — eager serialisation at put time must isolate the cached copy
+                someObj.v = 99;
+
+                var fromCache = cacheGet(key = key, cacheName = cacheName);
+
+                expect(fromCache.v).toBe(42, "post-put mutation leaked into the near cache (got #fromCache.v#, expected 42)");
+            })
+
+            it("LDEV-6327 cacheGet returns the latest value when two puts race on the same key", () => {
+                var key = "redis-test/#createGuid()#";
+
+                cachePut(key = key, value = "version-1", cacheName = cacheName);
+                cachePut(key = key, value = "version-2", cacheName = cacheName);
+
+                var val = cacheGet(key = key, cacheName = cacheName);
+
+                expect(val).toBe("version-2", "stale-wins: expected 'version-2', got '#val#'");
             })
         })
     }
