@@ -33,7 +33,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
                 "timeToLiveSeconds":0,
                 "testOnBorrow":true,
                 "rnd":1,
-                "__test__writeCommitDelay_ms": 1500
+                "nearCacheWriteCommitDelay": 1500
             },
             default=""
             readonly=false

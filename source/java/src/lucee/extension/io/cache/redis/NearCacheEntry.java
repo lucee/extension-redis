@@ -69,6 +69,13 @@ public class NearCacheEntry implements CacheEntry {
 		return key;
 	}
 
+	/**
+	 * Returns the materialised value, or null if this entry was constructed in serialised-only form
+	 * (i.e. queued by the async drain via {@link Storage#put} which stores only the serialised bytes
+	 * to avoid the LDEV-4413 write-side aliasing window). In that case callers should use
+	 * {@link #copy(ClassLoader)} to get a freshly deserialised value. The normal read path
+	 * (RedisCache.getCacheEntry) does that automatically.
+	 */
 	@Override
 	public Object getValue() {
 		return val;

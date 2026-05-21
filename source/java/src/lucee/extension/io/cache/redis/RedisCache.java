@@ -80,12 +80,17 @@ public class RedisCache extends CacheSupport implements Command {
 	private final Object token = new Object();
 
 	/**
-	 * Boxed type is to support representing the null case
+	 * Near-cache write-commit delay (ms): when set, the async drain thread sleeps this many
+	 * ms after each drain cycle completes (i.e. after the queue empties and the drain has
+	 * been notified of the next put). Letting puts batch up reduces Redis writes under burst
+	 * traffic at the cost of fresh data taking that long to reach the backing store. Also
+	 * used by tests to deterministically observe near-cache state while puts pile up.
+	 * Package-private — read directly by the Storage inner class, no public getter.
+	 * Set via the `nearCacheWriteCommitDelay` init argument; null (default) disables it.
+	 *
+	 * Boxed type so we can represent the "unset" case as null.
 	 */
-	private Integer __test__writeCommitDelay_ms = null;
-	public Integer get__test__writeCommitDelay_ms() {
-		return __test__writeCommitDelay_ms;
-	}
+	Integer nearCacheWriteCommitDelay = null;
 
 	public RedisCache() {
 		if (async) {
@@ -107,8 +112,8 @@ public class RedisCache extends CacheSupport implements Command {
 		this.cl = arguments.getClass().getClassLoader();
 		if (config == null) config = CFMLEngineFactory.getInstance().getThreadConfig();
 
-		__test__writeCommitDelay_ms = caster.toIntValue(arguments.get("__test__writeCommitDelay_ms", null), 0);
-		__test__writeCommitDelay_ms = __test__writeCommitDelay_ms <= 0 ? null : __test__writeCommitDelay_ms;
+		nearCacheWriteCommitDelay = caster.toIntValue(arguments.get("nearCacheWriteCommitDelay", null), 0);
+		nearCacheWriteCommitDelay = nearCacheWriteCommitDelay <= 0 ? null : nearCacheWriteCommitDelay;
 
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
@@ -897,7 +902,7 @@ public class RedisCache extends CacheSupport implements Command {
 		// Map overwrites on duplicate puts (LDEV-6327); queue preserves drain order.
 		private final ConcurrentHashMap<ByteArrayWrapper, NearCacheEntry> entries;
 		private final ConcurrentLinkedQueue<ByteArrayWrapper> drainQueue;
-		private RedisCache cache;
+		private final RedisCache cache;
 		private long current = Long.MIN_VALUE;
 		private final Object tokenAddToNear = new Object();
 		private final Object tokenAddToCache = new Object();
@@ -990,8 +995,8 @@ public class RedisCache extends CacheSupport implements Command {
 						if (drainQueue.isEmpty()) tokenAddToNear.wait();
 					}
 
-					if (cache.get__test__writeCommitDelay_ms() != null) {
-						Thread.sleep(cache.get__test__writeCommitDelay_ms());
+					if (cache.nearCacheWriteCommitDelay != null) {
+						Thread.sleep(cache.nearCacheWriteCommitDelay);
 					}
 				}
 				catch (Throwable e) {
