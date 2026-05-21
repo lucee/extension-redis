@@ -972,7 +972,15 @@ public class RedisCache extends CacheSupport implements Command {
 						NearCacheEntry entry = entries.get(wkey);
 						if (entry == null) continue;
 						current = entry.count();
-						cache.putBytes(entry.getByteKey(), entry.serialized(), entry.getExpires());
+						try {
+							cache.putBytes(entry.getByteKey(), entry.serialized(), entry.getExpires());
+						}
+						catch (Throwable t) {
+							// Re-offer so the entry isn't orphaned in the map forever. The outer
+							// catch backs off; next iteration retries from the queue.
+							drainQueue.offer(wkey);
+							throw t;
+						}
 						entries.remove(wkey, entry);
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();

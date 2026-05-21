@@ -191,7 +191,10 @@ public class Redis {
 				}
 				break;
 			case -1:
-				return null;
+				// EOF mid-response = connection closed by peer (Redis dead, proxy disabled, network drop).
+				// Returning null here masks the failure as "SET succeeded, returned null" which the async
+				// drain treats as success and removes the entry from the near cache — data lost silently.
+				throw new IOException("Unexpected EOF from Redis (connection closed before response)");
 			default:
 				throw new ProtocolException("Unexpected input: " + (byte) read);
 			}
