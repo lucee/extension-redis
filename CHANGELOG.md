@@ -4,6 +4,7 @@
 
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) prevent near-cache data loss on transient redis failure — duplicate `cachePut`s no longer stale-win, and async writes during a Redis hiccup are retried instead of silently dropped
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) near-cache eviction is now O(1) (was O(n) deque scan) — noticeable under high churn
+- [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) new `nearCache` init argument (default `true`) — set to `false` to disable the in-process near cache and route every get/put directly to Redis. Required for multi-node deployments where the near cache has no cross-node invalidation channel; trades ~2-4× throughput on hot-key workloads for correctness across nodes
 - [LDEV-4413](https://luceeserver.atlassian.net/browse/LDEV-4413) `cacheGet` no longer returns the live in-cache object reference — values are defensively copied, so mutating the returned struct/array can't corrupt the cache
 - connection-drop failures now surface as `Unexpected EOF from Redis` instead of misleading null/cast errors — `cacheGet(key, false)` and other default-value calls still return null on miss, only the error message on real connection failures changes
 

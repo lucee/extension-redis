@@ -64,7 +64,17 @@ public class RedisCache extends CacheSupport implements Command {
 	private int port;
 
 	private String username;
-	private final boolean async = true;
+	/**
+	 * Whether the near-cache (async drain thread + local read cache) is enabled.
+	 * Set from the `nearCache` init argument; defaults to true (existing behaviour).
+	 * When false, every get/put round-trips Redis directly — required for multi-node
+	 * deployments where the near-cache has no cross-node invalidation channel.
+	 *
+	 * Was previously `final true`; non-final now so init() can override. The field
+	 * is effectively-final after init (written once at config time), so the JIT
+	 * stable-field heuristic should still specialise the hot get/put paths.
+	 */
+	private boolean async = true;
 
 	private Storage storage = new Storage(this);
 
@@ -93,10 +103,7 @@ public class RedisCache extends CacheSupport implements Command {
 	Integer nearCacheWriteCommitDelay = null;
 
 	public RedisCache() {
-		if (async) {
-			// storage = new Storage(this);
-			storage.start();
-		}
+		// storage.start() deferred to init() — async flag may be overridden by `nearCache` init arg.
 	}
 
 	@Override
@@ -112,8 +119,15 @@ public class RedisCache extends CacheSupport implements Command {
 		this.cl = arguments.getClass().getClassLoader();
 		if (config == null) config = CFMLEngineFactory.getInstance().getThreadConfig();
 
+		async = caster.toBooleanValue(arguments.get("nearCache", null), true);
+		if (async) storage.start();
+
 		nearCacheWriteCommitDelay = caster.toIntValue(arguments.get("nearCacheWriteCommitDelay", null), 0);
 		nearCacheWriteCommitDelay = nearCacheWriteCommitDelay <= 0 ? null : nearCacheWriteCommitDelay;
+		if (!async && nearCacheWriteCommitDelay != null) {
+			if (log != null) log.warn("redis-cache", "nearCacheWriteCommitDelay is ignored when nearCache=false (no async drain to delay)");
+			nearCacheWriteCommitDelay = null;
+		}
 
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
