@@ -1,6 +1,6 @@
 # Changelog
 
-## 4.1.0.0-SNAPSHOT (in development on `fix/LDEV-6327-stale-wins`)
+## 4.1.0.0-SNAPSHOT
 
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) prevent near-cache data loss on transient redis failure — duplicate `cachePut`s no longer stale-win, and async writes during a Redis hiccup are retried instead of silently dropped
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) near-cache eviction is now O(1) (was O(n) deque scan) — noticeable under high churn
