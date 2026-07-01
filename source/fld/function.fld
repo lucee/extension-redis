@@ -114,4 +114,16 @@
 		</return>
 	</function>
 
+
+	<!-- RedisInfo -->
+	<function>
+		<name>RedisInfo</name>
+		<class maven="{maven}">lucee.extension.io.cache.redis.udf.RedisInfo</class>
+		<keywords>cache,redis</keywords>
+		<description>Returns information about the Redis extension. Currently returns an empty struct; populated in a future version.</description>
+		<return>
+			<type>struct</type>
+		</return>
+	</function>
+
 </func-lib>
