@@ -104,6 +104,41 @@ jobs:
           path: lucee
           ref: ${{ matrix.lucee.branch }}
 
+      - name: Patch Lucee's own redis-labeled ticket tests to use maven coordinates
+        run: |
+          python3 - <<'PYEOF'
+          import sys, os
+
+          version = os.environ["EXTENSION_VERSION"]
+          patches = {
+              "lucee/test/tickets/LDEV4408/Application.cfc": (
+                  "\t\t, bundleName: 'redis.extension'",
+                  f"\t\t, maven: 'org.lucee:redis:{version}'",
+              ),
+              "lucee/test/tickets/LDEV4342.cfc": (
+                  "\t\t\t\t\tbundleName=\"redis.extension\"",
+                  f"\t\t\t\t\tmaven=\"org.lucee:redis:{version}\"",
+              ),
+          }
+
+          failed = False
+          for path, (old, new) in patches.items():
+              with open(path, encoding="utf-8") as f:
+                  content = f.read()
+              if old not in content:
+                  print(f"::error::pattern not found in {path}: {old!r} (lucee/lucee test may have changed upstream)")
+                  failed = True
+                  continue
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(content.replace(old, new, 1))
+              print(f"patched {path}")
+
+          if failed:
+              sys.exit(1)
+          PYEOF
+        env:
+          EXTENSION_VERSION: ${{ needs.build.outputs.version }}
+
       - name: Run Lucee Test Suite
         uses: lucee/script-runner@main
         with:
