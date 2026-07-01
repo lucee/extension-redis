@@ -157,7 +157,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build, test]
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
+    env:
+      # Push with "[release]" in the commit message deploys to Maven even when the pom version ends with -ALPHA
+      FORCE_RELEASE: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release]') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -191,8 +196,13 @@ jobs:
             echo "------- Maven Deploy snapshot -------";
             mvn -B -e clean deploy -Dgoal=deploy --settings maven-settings.xml
           elif [[ "$VERSION" == *-ALPHA ]]; then
-            echo "------- Maven Install alpha -------";
-            mvn -B -e clean install -Dgoal=install --settings maven-settings.xml
+            if [[ "$FORCE_RELEASE" == "true" ]]; then
+              echo "------- Maven Deploy RELEASE (forced via [release] commit message) -------";
+              mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true --settings maven-settings.xml
+            else
+              echo "------- Maven Install alpha -------";
+              mvn -B -e clean install -Dgoal=install --settings maven-settings.xml
+            fi
           else
             echo "------- Maven Deploy release -------";
             mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true --settings maven-settings.xml
