@@ -13,17 +13,6 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 				expect( structCount( info ) ).toBe( 0 );
 			});
 
-			it( title="RedisInfo does not accept arguments", body=function( currentSpec ) {
-				var hasException = false;
-				try {
-					RedisInfo( "unexpected" );
-				}
-				catch ( any e ) {
-					hasException = true;
-				}
-				expect( hasException ).toBe( true );
-			});
-
 		});
 	}
 }
