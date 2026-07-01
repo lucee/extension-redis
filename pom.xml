@@ -4,11 +4,12 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>4.1.0.1-SNAPSHOT</version>
+    <version>4.2.0.0-ALPHA</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
     <properties>
+        <goal>install</goal>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
         <maven.compiler.source>11</maven.compiler.source>
@@ -17,7 +18,11 @@
         <image>https://raw.githubusercontent.com/lucee/extension-redis/master/source/images/logo.png</image>
         <buildDate>${maven.build.timestamp}</buildDate>
         <bundlename>redis.extension</bundlename>
-        <luceeCoreVersion>6.0.0.0</luceeCoreVersion>
+        <mvnGroupId>org.lucee</mvnGroupId>
+        <mvnGroupPath>org/lucee</mvnGroupPath>
+        <mvnArtifactId>redis</mvnArtifactId>
+        <filename>redis-extension</filename>
+        <luceeCoreVersion>7.1.0.2-ALPHA</luceeCoreVersion>
         <releaseType>server</releaseType>
         <label>Redis Extension for Jakarta EE (Lucee 7+)</label>
         <camelname>Redis</camelname>
@@ -86,6 +91,7 @@
                                 <configuration>
                                     <files>
                                         <file>${project.build.directory}/${project.artifactId}-${project.version}.lex</file>
+                                        <file>${project.build.directory}/${project.artifactId}-${project.version}.lite.lex</file>
                                     </files>
                                 </configuration>
                             </execution>
@@ -159,10 +165,14 @@
                                     <property name="description" value="${project.description}"/>
                                     <property name="class" value="${class}"/>
                                     <property name="camelname" value="${camelname}"/>
-                                    <property name="srcversion" value="${maven.compiler.source}"/>
-                                    <property name="trgversion" value="${maven.compiler.target}"/>
-
-
+                                    <property name="maven.goal" value="${goal}"/>
+                                    <property name="mvnGroupId" value="${mvnGroupId}"/>
+                                    <property name="mvnGroupPath" value="${mvnGroupPath}"/>
+                                    <property name="mvnArtifactId" value="${mvnArtifactId}"/>
+                                    <property name="mvnVersion" value="${project.version}"/>
+                                    <property name="maven.username" value="${env.MAVEN_USERNAME}"/>
+                                    <property name="maven.password" value="${env.MAVEN_PASSWORD}"/>
+                                    <property name="gpg.passphrase" value="${env.GPG_PASSPHRASE}"/>
                                 </ant>
                                 <condition property="isSnapshot" value="true" else="false">
                                     <matches string="${project.version}" pattern=".*-SNAPSHOT"/>
@@ -176,6 +186,11 @@
                                 <echo message="Deploying to URL: ${deploy.url}" />
                             </target>
                             <exportAntProperties>true</exportAntProperties>
+                            <propertySets>
+                                <propertySet>
+                                    <propertyRef prefix="env."/>
+                                </propertySet>
+                            </propertySets>
                         </configuration>
                     </execution>
                 </executions>
@@ -198,6 +213,11 @@
                                 <artifact>
                                     <file>${project.build.directory}/${project.artifactId}-${project.version}.lex</file>
                                     <type>lex</type>
+                                </artifact>
+                                <artifact>
+                                    <file>${project.build.directory}/${project.artifactId}-${project.version}.lite.lex</file>
+                                    <type>lex</type>
+                                    <classifier>lite</classifier>
                                 </artifact>
                             </artifacts>
                         </configuration>
@@ -254,6 +274,23 @@
                             <groupId>${project.groupId}</groupId>
                             <artifactId>${project.artifactId}</artifactId>
                             <version>${project.version}</version>
+                            <repositoryId>ossrh</repositoryId>
+                            <url>${deploy.url}</url>
+                            <packaging>lex</packaging>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>deploy-lite</id>
+                        <phase>deploy</phase>
+                        <goals>
+                            <goal>deploy-file</goal>
+                        </goals>
+                        <configuration>
+                            <file>${project.build.directory}/${project.artifactId}-${project.version}.lite.lex</file>
+                            <groupId>${project.groupId}</groupId>
+                            <artifactId>${project.artifactId}</artifactId>
+                            <version>${project.version}</version>
+                            <classifier>lite</classifier>
                             <repositoryId>ossrh</repositoryId>
                             <url>${deploy.url}</url>
                             <packaging>lex</packaging>

@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.2.0.0-ALPHA
+
+- **migrate to Maven-based extension build** (see [maven-based-extensions guide](https://github.com/lucee/lucee-docs/blob/master/docs/recipes/maven-based-extensions.md)) — `start-bundles: false`, dependencies (AWS SDK Secrets Manager, MongoDB BSON, commons-pool2) and the extension's own classes now resolve via Maven coordinates instead of OSGi bundles. Full `.lex` embeds the dependencies for offline install; a new `.lite.lex` resolves them from Maven Central at install time.
+- **drops Lucee 6.2 support** — `<cfdistributedlock>` (and other TLD-registered tags) can only be resolved via `maven=` class references from Lucee 7.1.0.2+; OSGi bundle wiring for tags is no longer built. `lucee-core-version` bumped accordingly.
+- removed unused bundled `bouncycastle` and `jackson` libraries (were declared as OSGi `Require-Bundle` entries but never referenced by any class in this extension)
+
 ## 4.1.0.0-SNAPSHOT
 
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) prevent near-cache data loss on transient redis failure — duplicate `cachePut`s no longer stale-win, and async writes during a Redis hiccup are retried instead of silently dropped

@@ -15,7 +15,7 @@
 	<!-- RedisCommand -->
 	<function>
 		<name>RedisCommand</name>
-		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisCommand</class>
+		<class maven="{maven}">lucee.extension.io.cache.redis.udf.RedisCommand</class>
 		<keywords>cache,redis</keywords>
 		<description>execute any redis function without any interpretation from Lucee.</description>
 		<argument>
@@ -57,7 +57,7 @@
 	<!-- RedisCommandLowPriority -->
 	<function>
 		<name>RedisCommandLowPriority</name>
-		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisCommandLowPriority</class>
+		<class maven="{maven}">lucee.extension.io.cache.redis.udf.RedisCommandLowPriority</class>
 		<keywords>cache,redis</keywords>
 		<description>This function works the same way as RedisCommand with only one difference. In case the connection pool is down to one free connection. The thread will wait for at least one connection more get free. So this command will not use the last connection available.</description>
 		<argument>
@@ -99,7 +99,7 @@
 	<!-- RedisConnectionPoolInfo -->
 	<function>
 		<name>RedisConnectionPoolInfo</name>
-		<class bundle-name="{bundle-name}" bundle-version="{bundle-version}">lucee.extension.io.cache.redis.udf.RedisConnectionPoolInfo</class>
+		<class maven="{maven}">lucee.extension.io.cache.redis.udf.RedisConnectionPoolInfo</class>
 		<keywords>cache,redis</keywords>
 		<description>Gives back detailed information about the Redis connection pool.</description>
 	    <argument>

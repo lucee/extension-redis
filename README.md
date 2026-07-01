@@ -14,7 +14,8 @@ Please provide your feedback.
 
 ### Versions
 
-- 4.x is for Lucee 7+ for Jakarta based servlet engines (Tomcat 10+)
+- 4.2.x is for Lucee 7.1+ only, Maven-based extension build (no OSGi bundling)
+- 4.0.x-4.1.x is for Lucee 6 and 7+ (dual javax/jakarta tag classes), OSGi bundle-based build
 - 3.x is for Lucee 5.4 and 6, for Javax based sevlet engines (Tomcat 9)
 
 ### Installation

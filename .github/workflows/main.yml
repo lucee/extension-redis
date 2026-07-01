@@ -10,10 +10,6 @@ on:
         description: 'Deploy to Maven Central'
         type: boolean
         default: false
-      luceeVersions:
-        description: 'JSON array of Lucee versions to test'
-        required: false
-        default: '[ "6.2/snapshot/light", "7.0/snapshot/light", "7.1/snapshot/light" ]'
 
 jobs:
   build:
@@ -44,7 +40,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build extension
-        run: mvn -B -e clean package
+        run: mvn -B -e clean package -Dgoal=install
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
@@ -58,10 +54,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: build
+    env:
+      LUCEE_TEST_VERSIONS_71: ${{ vars.LUCEE_TEST_VERSIONS_71 }}
     strategy:
       fail-fast: false
       matrix:
-        lucee: ${{ fromJSON(inputs.luceeVersions || '["6.2/snapshot/light", "7.0/snapshot/light", "7.1/snapshot/light"]') }}
+        lucee: ${{ fromJSON(vars.LUCEE_TEST_VERSIONS_71) }}
     services:
       redis:
         image: redis
@@ -153,11 +151,11 @@ jobs:
         run: |
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
             echo "------- Maven Deploy snapshot -------";
-            mvn -B -e clean deploy --settings maven-settings.xml
+            mvn -B -e clean deploy -Dgoal=deploy --settings maven-settings.xml
           elif [[ "$VERSION" == *-ALPHA ]]; then
             echo "------- Maven Install alpha -------";
-            mvn -B -e clean install --settings maven-settings.xml
+            mvn -B -e clean install -Dgoal=install --settings maven-settings.xml
           else
             echo "------- Maven Deploy release -------";
-            mvn -B -e clean deploy -DperformRelease=true --settings maven-settings.xml
+            mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true --settings maven-settings.xml
           fi
