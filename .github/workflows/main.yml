@@ -101,13 +101,15 @@ jobs:
         with:
           repository: lucee/lucee
           path: lucee
+          ref: ${{ matrix.lucee.branch }}
 
       - name: Run Lucee Test Suite
         uses: lucee/script-runner@main
         with:
           webroot: ${{ github.workspace }}/lucee/test
           execute: /bootstrap-tests.cfm
-          luceeVersion: ${{ matrix.lucee }}
+          luceeVersion: ${{ matrix.lucee.version }}
+          luceeVersionQuery: ${{ matrix.lucee.query }}
           extensionDir: ${{ github.workspace }}/target
         env:
           testLabels: redis
