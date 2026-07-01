@@ -14,10 +14,11 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 		var redis = server.getDatasource("redis");
 		if ( structCount(redis) eq 0 )
 			throw "Redis is not configured?";
+		var version = server.system.environment.EXTENSION_VERSION;
 		var caches ={
 			 "querybuffer":{
 				"class":"lucee.extension.io.cache.redis.simple.RedisCache",
-				"bundleName":"redis.extension",
+				"maven":"org.lucee:redis:#version#",
 				"custom":{
 					"minIdle":8,
 					"maxTotal":40,
@@ -37,7 +38,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			},
 			"queues":{
 				"class":"lucee.extension.io.cache.redis.simple.RedisCache",
-				"bundleName":"redis.extension",
+				"maven":"org.lucee:redis:#version#",
 				"custom":{
 					"minIdle":8,
 					"maxTotal":40,
@@ -57,7 +58,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			},
 			"sessionStorage":{
 				"class":"lucee.extension.io.cache.redis.simple.RedisCache",
-				"bundleName":"redis.extension",
+				"maven":"org.lucee:redis:#version#",
 				"custom":{
 					"minIdle":8,
 					"maxTotal":40,
@@ -77,7 +78,7 @@ component extends="org.lucee.cfml.test.LuceeTestCase" labels="redis" {
 			},
 			"queues":{
 				"class":"lucee.extension.io.cache.redis.simple.RedisCache",
-				"bundleName":"redis.extension",
+				"maven":"org.lucee:redis:#version#",
 				"custom":{
 					"minIdle":8,
 					"maxTotal":40,

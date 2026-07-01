@@ -5,10 +5,11 @@ component {
 	this.setClientCookies = true;
 
 	redis = server.getDatasource( "redis" );
+	version = server.system.environment.EXTENSION_VERSION;
 
 	this.cache.connections[ "ldev6046SessionRedis" ] = {
 		class: "lucee.extension.io.cache.redis.simple.RedisCache",
-		bundleName: "redis.extension",
+		maven: "org.lucee:redis:#version#",
 		custom: {
 			minIdle: 8,
 			maxTotal: 40,
