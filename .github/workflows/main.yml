@@ -60,7 +60,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lucee: ${{ fromJSON(vars.LUCEE_TEST_VERSIONS_71) }}
+        # repository variables are not available to pull requests from forks, fall back to the latest 7.1 snapshot
+        lucee: ${{ fromJSON(vars.LUCEE_TEST_VERSIONS_71 || '[{"version":"light-7.1.0.203-RC","query":"7.1/all/light","branch":"7.1"}]') }}
     services:
       redis:
         image: redis
