@@ -63,6 +63,15 @@ public class Coder {
 		return key.trim().toLowerCase();
 	}
 
+	/**
+	 * keys are stored lowercased (see toKey), so a wildcard pattern used to look them up (Redis KEYS)
+	 * needs the same normalization, otherwise patterns with uppercase characters never match
+	 */
+	public static String toKeyPattern(String pattern) {
+		if (pattern == null) return null;
+		return pattern.toLowerCase();
+	}
+
 	public static byte[][] toKeys(String[] keys) {
 		byte[][] arr = new byte[keys == null ? 0 : keys.length][];
 		for (int i = 0; i < keys.length; i++) {
