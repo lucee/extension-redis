@@ -36,6 +36,26 @@ Please tune this following your environment's needs. Note that the driver actual
 
 All set. You are done.
 
+### Connecting via a Unix domain socket
+
+If Redis listens on a Unix domain socket (`unixsocket` in `redis.conf`), for example a socket file shared with the Lucee container through a volume, set the "Socket path" field in the admin, or the `socket` key in the cache definition, to the absolute path of the socket file:
+
+```
+this.cache.connections["redis"] = {
+	class: "lucee.extension.io.cache.redis.simple.RedisCache",
+	custom: {
+		socket: "/tmp/redis/redis.sock",
+		username: "lucee",   // optional, ACL user
+		password: "secret"   // optional
+	}
+};
+```
+
+* When `socket` is set, `host`, `port` and `ssl` are ignored (TLS does not apply to a local socket). Username/password authentication and `databaseIndex` work as usual.
+* Requires Java 16 or newer.
+* The Lucee process needs read/write permission on the socket file (see `unixsocketperm` in `redis.conf`).
+* `socketTimeout` only applies to TCP connections; connecting to a local socket fails or succeeds immediately.
+
 ### Important
 
 * *Metadata*:
