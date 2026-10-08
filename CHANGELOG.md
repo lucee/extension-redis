@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- [LDEV-6538](https://luceeserver.atlassian.net/browse/LDEV-6538) wildcard filters in `cacheClear()`, `cacheGetAllIds()` and `cacheGetAll()` are now lowercased like the keys, so filters with uppercase characters (e.g. `Users:Active:*`) match again
+
 ## 4.1.0.0-SNAPSHOT
 
 - [LDEV-6327](https://luceeserver.atlassian.net/browse/LDEV-6327) prevent near-cache data loss on transient redis failure — duplicate `cachePut`s no longer stale-win, and async writes during a Redis hiccup are retried instead of silently dropped
