@@ -102,6 +102,20 @@ jobs:
           repository: lucee/lucee
           path: lucee
 
+      - name: Start Redis listening on a Unix domain socket (LDEV-6541)
+        run: |
+          mkdir -p /tmp/redis-socket && chmod 777 /tmp/redis-socket
+          docker run -d --name redis-socket -v /tmp/redis-socket:/tmp/redis-socket redis \
+            redis-server --port 0 --save '' \
+            --unixsocket /tmp/redis-socket/redis.sock --unixsocketperm 777 \
+            --user default off --user lucee on '>lucee-socket-test' '~*' '&*' '+@all'
+          for i in $(seq 1 30); do
+            [ -S /tmp/redis-socket/redis.sock ] && break
+            sleep 1
+          done
+          ls -la /tmp/redis-socket
+          docker exec redis-socket redis-cli -s /tmp/redis-socket/redis.sock --user lucee --pass lucee-socket-test --no-auth-warning ping
+
       - name: Run Lucee Test Suite
         uses: lucee/script-runner@main
         with:
@@ -114,6 +128,9 @@ jobs:
           testAdditional: ${{ github.workspace }}/tests
           REDIS_PORT: 6379
           REDIS_SERVER: localhost
+          REDIS_SOCKET: /tmp/redis-socket/redis.sock
+          REDIS_SOCKET_USERNAME: lucee
+          REDIS_SOCKET_PASSWORD: lucee-socket-test
 
   deploy:
     runs-on: ubuntu-latest

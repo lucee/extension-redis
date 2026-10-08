@@ -22,6 +22,13 @@ component extends="Cache" {
 			type = "checkbox",
 			values = true
 		)
+		,field(displayName = "Socket path",
+			name = "socket",
+			defaultValue = "",
+			required = false,
+			description = "Optional absolute path to the Unix domain socket file of the Redis server (for example /var/run/redis/redis.sock). When set, the connection is made via this socket and Host, Port and SSL are ignored. Requires Java 16 or newer.",
+			type = "text"
+		)
 
 		,group("Direct Authentication","Authentication Credentials")
 		,field(displayName = "Username",
