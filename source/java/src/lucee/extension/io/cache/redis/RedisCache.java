@@ -62,6 +62,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	private String host;
 	private int port;
+	private String socketPath;
 
 	private String username;
 	/**
@@ -132,6 +133,11 @@ public class RedisCache extends CacheSupport implements Command {
 		host = caster.toString(arguments.get("host", "localhost"), "localhost");
 		port = caster.toIntValue(arguments.get("port", null), 6379);
 
+		// optional path to a Unix domain socket file; when set, host/port (and ssl) are ignored
+		socketPath = caster.toString(arguments.get("socket", null), null);
+		if (Util.isEmpty(socketPath, true)) socketPath = null;
+		else socketPath = socketPath.trim();
+
 		socketTimeout = caster.toIntValue(arguments.get("timeout", null), -1);
 		if (socketTimeout == -1) socketTimeout = caster.toIntValue(arguments.get("socketTimeout", null), 2000);
 
@@ -179,7 +185,7 @@ public class RedisCache extends CacheSupport implements Command {
 		}
 
 		if (log != null) {
-			log.debug("redis-cache", "configuration: host:" + host + ";port:" + port + ";socketTimeout:" + socketTimeout + ";liveTimeout:" + liveTimeout + ";idleTimeout:"
+			log.debug("redis-cache", "configuration: host:" + host + ";port:" + port + ";socket:" + socketPath + ";socketTimeout:" + socketTimeout + ";liveTimeout:" + liveTimeout + ";idleTimeout:"
 					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";");
 		}
 
@@ -188,7 +194,7 @@ public class RedisCache extends CacheSupport implements Command {
 		if (username == null && secretName != null) {
 			CredDat cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, false, false);
 			pool = new RedisPool(
-					new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
+					new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), socketPath, cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log),
 					getPoolConfig(arguments), listener);
 
 			// validate a connection
@@ -199,7 +205,7 @@ public class RedisCache extends CacheSupport implements Command {
 			catch (Exception e) {
 				// in case the connection does not work, we force an update on the credentials loaded from SM
 				cred = SecretReciever.getCredential(secretName, region, accessKeyId, secretKey, true, true);
-				pool = new RedisPool(new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout,
+				pool = new RedisPool(new RedisFactory(cl, choose(host, cred.host), choose(port, cred.port), socketPath, cred.user, cred.pass, ssl, socketTimeout, idleTimeout, liveTimeout,
 						databaseIndex, log), getPoolConfig(arguments), listener);
 			}
 			finally {
@@ -207,7 +213,7 @@ public class RedisCache extends CacheSupport implements Command {
 			}
 
 		}
-		else pool = new RedisPool(new RedisFactory(cl, host, port, username, password, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log), getPoolConfig(arguments),
+		else pool = new RedisPool(new RedisFactory(cl, host, port, socketPath, username, password, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log), getPoolConfig(arguments),
 				listener);
 
 	}
