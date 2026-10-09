@@ -11,11 +11,12 @@
     <properties>
         <!-- CI-friendly version (same approach as Lucee core LDEV-6516).
              Local and PR builds use the default below (base.0 + qualifier).
-             Release builds in GitHub Actions pass -Drevision=base.N[qualifier], N = highest existing build + 1.
-             To start a new line (e.g. 4.3.0) change extension.version.base; for a stable line set the qualifier to empty. -->
+             Every push to the release branch gets -Drevision=base.N[qualifier] from GitHub Actions, N = highest existing build + 1,
+             and publishes it (-SNAPSHOT to the Central snapshot repository).
+             For a release candidate or final release set the qualifier to -RC or empty (or pick it in a manual run), see README.md. -->
         <extension.version.base>4.2.0</extension.version.base>
         <extension.version.build>0</extension.version.build>
-        <extension.version.qualifier>-ALPHA</extension.version.qualifier>
+        <extension.version.qualifier>-SNAPSHOT</extension.version.qualifier>
         <revision>${extension.version.base}.${extension.version.build}${extension.version.qualifier}</revision>
         <goal>install</goal>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
