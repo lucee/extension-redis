@@ -7,16 +7,21 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy to Maven Central'
+        description: 'Publish (a new build number) to Maven Central'
         type: boolean
         default: false
+      qualifier:
+        description: 'Qualifier for this run. "pom" keeps extension.version.qualifier from pom.xml (-SNAPSHOT); pick RC, BETA, ALPHA or release (none) to publish a release candidate or final release from the current code'
+        type: choice
+        options: [pom, SNAPSHOT, ALPHA, BETA, RC, release]
+        default: pom
       luceeVersions:
         description: 'JSON array of Lucee versions to test'
         required: false
         default: '[ "6.2/snapshot/light", "7.0/snapshot/light", "7.1/snapshot/light" ]'
 
-# Run builds of the same ref one after another, so every release build resolves its own
-# revision (highest build + 1) only after the previous release build has created its tag.
+# Run builds of the same ref one after another, so every push to 4.1 resolves its own
+# revision (highest build + 1) only after the previous build has published and created its tag.
 # PRs have their own ref (refs/pull/N/merge), so they are not blocked by branch builds.
 # queue: max keeps up to 100 pending runs (default would keep only one and cancel older pending runs).
 concurrency:
@@ -29,11 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # same condition as the deploy job: only builds that publish to Maven Central allocate a build number
-      DO_DEPLOY: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) }}
+      # like Lucee core (LDEV-6516): every push to 4.1 publishes a new build, a manual run publishes when deploy is ticked.
+      # PRs never publish. Runs without the deploy secrets (forks) only build and test, see "Resolve next revision".
+      DO_DEPLOY: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && github.ref == 'refs/heads/4.1') }}
+      QUALIFIER_INPUT: ${{ inputs.qualifier || 'pom' }}
     outputs:
       version: ${{ steps.extract-version.outputs.VERSION }}
       tag: ${{ steps.extract-version.outputs.TAG }}
+      deploy: ${{ steps.extract-version.outputs.DEPLOY }}
     steps:
       - uses: actions/checkout@v6
 
@@ -65,15 +73,15 @@ jobs:
       - name: Resolve next revision
         run: |
           set -euo pipefail
-          # Only release builds (deploy job runs) allocate a build number.
-          # PRs, forks and plain pushes keep the default POM revision (base.0 + qualifier).
+          # Only builds that publish allocate a build number: every push to 4.1 and manual runs with deploy ticked.
+          # PRs and runs without the deploy secrets (forks) keep the default POM revision (base.0 + qualifier) and publish nothing.
           if [ "$DO_DEPLOY" != "true" ]; then
-            echo "Skipping revision bump (not a release build)"
+            echo "Skipping revision bump (not a push to 4.1 / manual deploy)"
             exit 0
           fi
           # without deploy credentials nothing gets published, so do not consume a build number
-          if [ "${{ secrets.GPG_PASSPHRASE }}" == "" ]; then
-            echo "Skipping revision bump (no GPG / deploy credentials)"
+          if [ "${{ secrets.GPG_PASSPHRASE }}" == "" ] || [ "${{ secrets.MAVEN_USERNAME }}" == "" ]; then
+            echo "Skipping revision bump (no GPG / Maven deploy credentials; test-only run)"
             exit 0
           fi
 
@@ -81,12 +89,19 @@ jobs:
           QUALIFIER=$(mvn help:evaluate -Dexpression=extension.version.qualifier -q -DforceStdout | tr -d '\r')
           # an empty property evaluates to "null"
           [ "$QUALIFIER" == "null" ] && QUALIFIER=""
+          # a manual run can publish the current code as ALPHA, BETA, RC or final release instead of the pom qualifier
+          case "$QUALIFIER_INPUT" in
+            pom|"") ;;
+            release) QUALIFIER="" ;;
+            SNAPSHOT|ALPHA|BETA|RC) QUALIFIER="-$QUALIFIER_INPUT" ;;
+            *) echo "::error::unknown qualifier input [$QUALIFIER_INPUT]"; exit 1 ;;
+          esac
           echo "Base=$BASE qualifier=$QUALIFIER"
           BASE_RE=$(printf '%s' "$BASE" | sed 's/\./\\./g')
 
           git fetch --tags --force origin 2>/dev/null || true
 
-          # highest build of this base, from git tags (base.N) and from Maven Central / snapshots (base.N[-QUALIFIER]).
+          # highest build of this base, from git tags (base.N), Maven Central and the Central snapshot repository (base.N[-QUALIFIER]).
           # Both are checked, so a version published without a tag (e.g. 4.1.0.1-RC) is never built twice.
           BUILDS=$(git tag -l "${BASE}.*" | sed -nE "s/^${BASE_RE}\.([0-9]+)$/\1/p" || true)
           for url in \
@@ -112,6 +127,7 @@ jobs:
           echo "Resolved VERSION=$VERSION TAG=$TAG (max seen build=${MAX_BUILD:-none})"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "DEPLOY=true" >> "$GITHUB_ENV"
 
       - name: Extract version number
         id: extract-version
@@ -126,6 +142,7 @@ jobs:
           echo "Using VERSION=$VERSION TAG=${TAG:-}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "TAG=${TAG:-}" >> $GITHUB_OUTPUT
+          echo "DEPLOY=${DEPLOY:-false}" >> $GITHUB_OUTPUT
 
       - name: Build extension
         env:
@@ -222,9 +239,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build, test]
-    if: |
-      (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
-      (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
+    # set by the build job: push to the release branch or manual deploy, with the deploy secrets available
+    if: needs.build.outputs.deploy == 'true'
     permissions:
       # push the tag of the published revision
       contents: write
@@ -270,11 +286,12 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
-          # the deploy job only runs for an intended release ([release] commit or manual deploy),
-          # so every qualifier except -SNAPSHOT (e.g. -ALPHA, -RC or none) is published as a release
+          # central-publishing-maven-plugin sends a -SNAPSHOT version to the Central snapshot repository
+          # (https://central.sonatype.com/repository/maven-snapshots/), any other qualifier (-ALPHA, -BETA, -RC or none) to Maven Central.
+          # Everything is signed, snapshots included (same as the snapshots published before).
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
             echo "------- Maven Deploy snapshot $VERSION -------";
-            mvn -B -e clean deploy -Drevision="$VERSION" --settings maven-settings.xml
+            mvn -B -e clean deploy -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
           else
             echo "------- Maven Deploy release $VERSION -------";
             mvn -B -e clean deploy -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
