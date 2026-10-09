@@ -4,11 +4,19 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.lucee</groupId>
     <artifactId>redis-extension</artifactId>
-    <version>4.2.0.0-ALPHA</version>
+    <version>${revision}</version>
     <packaging>pom</packaging>
     <name>Redis Extension</name>
 
     <properties>
+        <!-- CI-friendly version (same approach as Lucee core LDEV-6516).
+             Local and PR builds use the default below (base.0 + qualifier).
+             Release builds in GitHub Actions pass -Drevision=base.N[qualifier], N = highest existing build + 1.
+             To start a new line (e.g. 4.3.0) change extension.version.base; for a stable line set the qualifier to empty. -->
+        <extension.version.base>4.2.0</extension.version.base>
+        <extension.version.build>0</extension.version.build>
+        <extension.version.qualifier>-ALPHA</extension.version.qualifier>
+        <revision>${extension.version.base}.${extension.version.build}${extension.version.qualifier}</revision>
         <goal>install</goal>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss</maven.build.timestamp.format>
@@ -121,6 +129,8 @@
                 <version>1.6.0</version>
                 <configuration>
                     <flattenMode>bom</flattenMode>
+                    <!-- resolve ${revision} in the installed/deployed pom (packaging pom is skipped by default) -->
+                    <updatePomFile>true</updatePomFile>
                 </configuration>
                 <executions>
                     <execution>

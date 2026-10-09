@@ -11,12 +11,25 @@ on:
         type: boolean
         default: false
 
+# Run builds of the same ref one after another, so every release build resolves its own
+# revision (highest build + 1) only after the previous release build has created its tag.
+# PRs have their own ref (refs/pull/N/merge), so they are not blocked by master builds.
+# queue: max keeps up to 100 pending runs (default would keep only one and cancel older pending runs).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # same condition as the deploy job: only builds that publish to Maven Central allocate a build number
+      DO_DEPLOY: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]')) }}
     outputs:
       version: ${{ steps.extract-version.outputs.VERSION }}
+      tag: ${{ steps.extract-version.outputs.TAG }}
     steps:
       - uses: actions/checkout@v6
 
@@ -33,14 +46,87 @@ jobs:
           key: maven-${{ hashFiles('pom.xml') }}
           restore-keys: maven-
 
+      # ubuntu-latest moved to Maven 3.10.0 (runner image 20261004). With it, central-publishing-maven-plugin
+      # leaves maven-metadata-local.xml in the staging dir, which Central rejects. Pin Maven 3.9.x like Lucee core.
+      - name: Set up Maven 3.9.16
+        run: |
+          MVN_VERSION=3.9.16
+          MVN_SHA512=831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+          curl -fsSL -o "$RUNNER_TEMP/maven.tar.gz" "https://repo1.maven.org/maven2/org/apache/maven/apache-maven/$MVN_VERSION/apache-maven-$MVN_VERSION-bin.tar.gz"
+          echo "$MVN_SHA512  $RUNNER_TEMP/maven.tar.gz" | sha512sum -c -
+          tar xzf "$RUNNER_TEMP/maven.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-$MVN_VERSION/bin" >> $GITHUB_PATH
+          "$RUNNER_TEMP/apache-maven-$MVN_VERSION/bin/mvn" -v
+
+      - name: Resolve next revision
+        run: |
+          set -euo pipefail
+          # Only release builds (deploy job runs) allocate a build number.
+          # PRs, forks and plain pushes keep the default POM revision (base.0 + qualifier).
+          if [ "$DO_DEPLOY" != "true" ]; then
+            echo "Skipping revision bump (not a release build)"
+            exit 0
+          fi
+          # without deploy credentials nothing gets published, so do not consume a build number
+          if [ "${{ secrets.GPG_PASSPHRASE }}" == "" ]; then
+            echo "Skipping revision bump (no GPG / deploy credentials)"
+            exit 0
+          fi
+
+          BASE=$(mvn help:evaluate -Dexpression=extension.version.base -q -DforceStdout | tr -d '\r')
+          QUALIFIER=$(mvn help:evaluate -Dexpression=extension.version.qualifier -q -DforceStdout | tr -d '\r')
+          # an empty property evaluates to "null"
+          [ "$QUALIFIER" == "null" ] && QUALIFIER=""
+          echo "Base=$BASE qualifier=$QUALIFIER"
+          BASE_RE=$(printf '%s' "$BASE" | sed 's/\./\\./g')
+
+          git fetch --tags --force origin 2>/dev/null || true
+
+          # highest build of this base, from git tags (base.N) and from Maven Central / snapshots (base.N[-QUALIFIER]).
+          # Both are checked, so a version published without a tag (e.g. 4.2.0.0-ALPHA) is never built twice.
+          BUILDS=$(git tag -l "${BASE}.*" | sed -nE "s/^${BASE_RE}\.([0-9]+)$/\1/p" || true)
+          for url in \
+            "https://repo1.maven.org/maven2/org/lucee/redis-extension/maven-metadata.xml" \
+            "https://repo1.maven.org/maven2/org/lucee/redis/maven-metadata.xml" \
+            "https://central.sonatype.com/repository/maven-snapshots/org/lucee/redis-extension/maven-metadata.xml" \
+            "https://central.sonatype.com/repository/maven-snapshots/org/lucee/redis/maven-metadata.xml"
+          do
+            META=$(curl -fsSL --max-time 30 "$url" 2>/dev/null || true)
+            BUILDS="$BUILDS"$'\n'$(printf '%s' "$META" | grep -oE "<version>${BASE_RE}\.[0-9]+([-.][^<]*)?</version>" | sed -E "s#<version>${BASE_RE}\.([0-9]+).*#\1#" || true)
+          done
+          MAX_BUILD=$(printf '%s\n' "$BUILDS" | grep -E '^[0-9]+$' | sort -n | tail -1 || true)
+
+          if [ -z "$MAX_BUILD" ]; then
+            NEXT_BUILD=0
+          else
+            NEXT_BUILD=$((MAX_BUILD + 1))
+          fi
+
+          VERSION="${BASE}.${NEXT_BUILD}${QUALIFIER}"
+          # tag shape matches existing tags (4.1.0.0, 3.0.0.54): numeric 4-part without qualifier
+          TAG="${BASE}.${NEXT_BUILD}"
+          echo "Resolved VERSION=$VERSION TAG=$TAG (max seen build=${MAX_BUILD:-none})"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
       - name: Extract version number
         id: extract-version
         run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          set -euo pipefail
+          if [ -z "${VERSION:-}" ]; then
+            VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout | tr -d '\r')
+          fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){3}(-[A-Za-z0-9]+)*$'; then
+            echo "::error::[$VERSION] is not a valid extension version"; exit 1
+          fi
+          echo "Using VERSION=$VERSION TAG=${TAG:-}"
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "TAG=${TAG:-}" >> $GITHUB_OUTPUT
 
       - name: Build extension
-        run: mvn -B -e clean package -Dgoal=install
+        env:
+          VERSION: ${{ steps.extract-version.outputs.VERSION }}
+        run: mvn -B -e clean package -Dgoal=install -Drevision="$VERSION"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
@@ -160,9 +246,9 @@ jobs:
     if: |
       (github.event_name == 'workflow_dispatch' && inputs.deploy) ||
       (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
-    env:
-      # Push with "[release]" in the commit message deploys to Maven even when the pom version ends with -ALPHA
-      FORCE_RELEASE: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[release]') }}
+    permissions:
+      # push the tag of the published revision
+      contents: write
     steps:
       - uses: actions/checkout@v6
 
@@ -171,6 +257,18 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      # ubuntu-latest moved to Maven 3.10.0 (runner image 20261004). With it, central-publishing-maven-plugin
+      # leaves maven-metadata-local.xml in the staging dir, which Central rejects. Pin Maven 3.9.x like Lucee core.
+      - name: Set up Maven 3.9.16
+        run: |
+          MVN_VERSION=3.9.16
+          MVN_SHA512=831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+          curl -fsSL -o "$RUNNER_TEMP/maven.tar.gz" "https://repo1.maven.org/maven2/org/apache/maven/apache-maven/$MVN_VERSION/apache-maven-$MVN_VERSION-bin.tar.gz"
+          echo "$MVN_SHA512  $RUNNER_TEMP/maven.tar.gz" | sha512sum -c -
+          tar xzf "$RUNNER_TEMP/maven.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/apache-maven-$MVN_VERSION/bin" >> $GITHUB_PATH
+          "$RUNNER_TEMP/apache-maven-$MVN_VERSION/bin/mvn" -v
 
       - name: Cache Maven packages
         uses: actions/cache@v5
@@ -192,18 +290,31 @@ jobs:
           MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
+          set -euo pipefail
+          # the deploy job only runs for an intended release ([release] commit or manual deploy),
+          # so every qualifier except -SNAPSHOT (e.g. -ALPHA, -RC or none) is published as a release
           if [[ "$VERSION" == *-SNAPSHOT ]]; then
-            echo "------- Maven Deploy snapshot -------";
-            mvn -B -e clean deploy -Dgoal=deploy --settings maven-settings.xml
-          elif [[ "$VERSION" == *-ALPHA ]]; then
-            if [[ "$FORCE_RELEASE" == "true" ]]; then
-              echo "------- Maven Deploy RELEASE (forced via [release] commit message) -------";
-              mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true --settings maven-settings.xml
-            else
-              echo "------- Maven Install alpha -------";
-              mvn -B -e clean install -Dgoal=install --settings maven-settings.xml
-            fi
+            echo "------- Maven Deploy snapshot $VERSION -------";
+            mvn -B -e clean deploy -Dgoal=deploy -Drevision="$VERSION" --settings maven-settings.xml
           else
-            echo "------- Maven Deploy release -------";
-            mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true --settings maven-settings.xml
+            echo "------- Maven Deploy release $VERSION -------";
+            mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
           fi
+
+      - name: Tag published revision
+        if: success() && needs.build.outputs.tag != ''
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin 2>/dev/null || true
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists - skipping"
+            exit 0
+          fi
+          echo "Creating annotated tag $TAG for $VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$VERSION"
+          git push origin "refs/tags/$TAG"
