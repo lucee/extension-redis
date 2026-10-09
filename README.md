@@ -48,5 +48,14 @@ All set. You are done.
 
 To build the extension, run `mvn package` in the root directory
 
+### Versioning and releases (4.1 branch)
 
+The version is not edited by hand. `pom.xml` uses a CI-friendly `${revision}` built from
+`extension.version.base` (`4.1.0`), a build number and `extension.version.qualifier` (`-RC`).
 
+* Local, PR and normal pushes use build number `0` (e.g. `4.1.0.0-RC`) and publish nothing.
+* A release build (push to `4.1` with `[release]` in the commit message, or a manual run with `deploy` checked)
+  takes the highest existing build of the base, from the git tags and from Maven Central, adds 1,
+  publishes that version (e.g. `4.1.0.2-RC`) and creates the tag `4.1.0.2`.
+* A `-SNAPSHOT` qualifier publishes to the Central snapshot repository, any other qualifier (or none) publishes a release.
+* For a stable release set `extension.version.qualifier` to empty.

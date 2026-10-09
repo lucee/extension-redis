@@ -3,3 +3,4 @@
 *.DS_Store
 target/
 /test-output
+.flattened-pom.xml
