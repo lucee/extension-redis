@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- [LDEV-6541](https://luceeserver.atlassian.net/browse/LDEV-6541) connect to Redis via a Unix domain socket — new optional `socket` setting ("Socket path" in the admin) with the path to the socket file; when set, `host`, `port` and `ssl` are ignored. Requires Java 16+.
+- a connection whose `AUTH`/`SELECT` fails during creation is now closed instead of being left open
+
 ## 4.2.0.0-ALPHA
 
 - **migrate to Maven-based extension build** (see [maven-based-extensions guide](https://github.com/lucee/lucee-docs/blob/master/docs/recipes/maven-based-extensions.md)) — `start-bundles: false`, dependencies (AWS SDK Secrets Manager, MongoDB BSON, commons-pool2) and the extension's own classes now resolve via Maven coordinates instead of OSGi bundles. Full `.lex` embeds the dependencies for offline install; a new `.lite.lex` resolves them from Maven Central at install time.

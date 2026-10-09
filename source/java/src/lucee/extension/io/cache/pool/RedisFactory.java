@@ -27,15 +27,31 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	private final long liveTimeout;
 	private final Log log;
 	private final boolean ssl;
+	private final String socketPath;
+	private final String address;
 
 	public RedisFactory(ClassLoader cl, String host, int port, String username, String password, boolean ssl, int socketTimeout, long idleTimeout, long liveTimeout,
 			int databaseIndex, Log log) {
+		this(cl, host, port, null, username, password, ssl, socketTimeout, idleTimeout, liveTimeout, databaseIndex, log);
+	}
+
+	/**
+	 * @param socketPath path to a Unix domain socket file; when set, host, port and ssl are ignored
+	 *            and the connection is made via the socket file (Java 16+)
+	 */
+	public RedisFactory(ClassLoader cl, String host, int port, String socketPath, String username, String password, boolean ssl, int socketTimeout, long idleTimeout,
+			long liveTimeout, int databaseIndex, Log log) {
 		this.cl = cl;
 		this.username = Util.isEmpty(username) ? null : username;
 		this.password = Util.isEmpty(password) ? null : password;
 		this.host = host;
 		this.port = port;
+		this.socketPath = Util.isEmpty(socketPath, true) ? null : socketPath.trim();
 		this.ssl = ssl;
+		this.address = this.socketPath != null ? "unix:" + this.socketPath : host + ":" + port;
+		if (this.socketPath != null && ssl && log != null) {
+			log.warn("redis-cache", "ssl is ignored for connections via Unix domain socket [" + this.socketPath + "]");
+		}
 
 		this.socketTimeout = socketTimeout;
 		this.idleTimeout = idleTimeout;
@@ -46,25 +62,48 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 
 	@Override
 	public Redis create() throws IOException {
-		if (log != null) log.debug("redis-cache", "create connection to " + host + ":" + port);
-		Socket socket = getSocket();
-
-		InetSocketAddress serverInfo = new InetSocketAddress(host, port);
+		if (log != null) log.debug("redis-cache", "create connection to " + address);
+		Socket socket;
+		if (socketPath != null) {
+			// Unix domain socket: connecting is local and does not block like TCP, so socketTimeout does not apply
+			try {
+				socket = UnixDomainSocket.connect(socketPath);
+			}
+			catch (Exception e) {
+				throw new IOException("The Redis client was not able to create a connection to [" + address + "]", e);
+			}
+		}
+		else {
+			socket = getSocket();
+			InetSocketAddress serverInfo = new InetSocketAddress(host, port);
+			try {
+				if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
+				else socket.connect(serverInfo);
+			}
+			catch (Exception e) {
+				throw new IOException("The Redis client was not able to create a connection to [" + host + ":" + port + "]", e);
+			}
+		}
+		Redis redis;
 		try {
-			if (socketTimeout > 0) socket.connect(serverInfo, socketTimeout);
-			else socket.connect(serverInfo);
-		}
-		catch (Exception e) {
-			throw new IOException("The Redis client was not able to create a connection to [" + host + ":" + port + "]", e);
-		}
-		Redis redis = new Redis(cl, socket);
+			redis = new Redis(cl, socket);
 
-		if (password != null) {
-			if (username != null) redis.call("AUTH", username, password);
-			else redis.call("AUTH", password);
+			if (password != null) {
+				if (username != null) redis.call("AUTH", username, password);
+				else redis.call("AUTH", password);
+			}
+			if (databaseIndex > -1) {
+				redis.call("SELECT", String.valueOf(databaseIndex));
+			}
 		}
-		if (databaseIndex > -1) {
-			redis.call("SELECT", String.valueOf(databaseIndex));
+		catch (IOException | RuntimeException e) {
+			try {
+				socket.close();
+			}
+			catch (Exception ex) {
+				// ignore
+			}
+			throw e;
 		}
 		return redis;
 	}
@@ -95,30 +134,30 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 		// check timeout
 		long now = System.currentTimeMillis();
 		if (liveTimeout > 0 && redis.created + liveTimeout < now) {
-			if (log != null) log.debug("redis-cache", "validateObject(reached live timeout:" + liveTimeout + ") " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "validateObject(reached live timeout:" + liveTimeout + ") " + address);
 			return false;
 		}
 		if (idleTimeout > 0 && redis.lastUsed + idleTimeout < now) {
-			if (log != null) log.debug("redis-cache", "validateObject(reached idle timeout:" + idleTimeout + ") " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "validateObject(reached idle timeout:" + idleTimeout + ") " + address);
 			return false;
 		}
 
 		// check socket
 		Socket socket = redis.getSocket();
 		if (socket == null) {
-			if (log != null) log.debug("redis-cache", "validateObject(socket null) " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "validateObject(socket null) " + address);
 			return false;
 		}
 
 		if (!socket.isConnected()) {
-			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + address);
 			return false;
 		}
 		if (socket.isClosed()) {
-			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + address);
 			return false;
 		}
-		if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
+		if (log != null) log.debug("redis-cache", "validateObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + address);
 
 		return true;
 	}
@@ -135,7 +174,7 @@ public class RedisFactory extends BasePooledObjectFactory<Redis> {
 	public void destroyObject(PooledObject<Redis> p) throws Exception {
 		Socket socket = p.getObject().getSocket();
 		if (socket != null) {
-			if (log != null) log.debug("redis-cache", "destroyObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + host + ":" + port);
+			if (log != null) log.debug("redis-cache", "destroyObject(closed:" + socket.isClosed() + ";conn:" + socket.isConnected() + ") " + address);
 			socket.close();
 		}
 	}
