@@ -577,7 +577,7 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<byte[]> _bkeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*");
 		List<byte[]> list = new ArrayList<byte[]>();
 		if (skeys == null || skeys.size() == 0) return list;
 
@@ -593,7 +593,7 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<String> _skeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? filter.toPattern() : "*");
+		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*");
 		List<String> list = new ArrayList<String>();
 		Iterator<byte[]> it = skeys.iterator();
 		if (skeys == null || skeys.size() == 0) return list;
