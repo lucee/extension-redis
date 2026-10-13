@@ -153,6 +153,17 @@ jobs:
             target/*.lex
             !target/*.lite.lex
 
+      # everything the S3 upload needs (LDEV-6568): full and lite .lex plus the flattened POM
+      - name: Upload artifact for S3
+        if: steps.extract-version.outputs.DEPLOY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: redis-s3
+          include-hidden-files: true
+          path: |
+            target/*.lex
+            .flattened-pom.xml
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -353,3 +364,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "$VERSION"
           git push origin "refs/tags/$TAG"
+
+  # upload the published build to cdn.lucee.org in Maven layout, LDEV-6568.
+  # Cut-off rules (SNAPSHOTs stop on 2027-03-01) live in the called workflow.
+  s3:
+    needs: [build, deploy]
+    if: needs.build.outputs.deploy == 'true'
+    uses: lucee/lucee/.github/workflows/extension-s3-upload.yml@7.1
+    with:
+      artifact-name: redis-s3
+      version: ${{ needs.build.outputs.version }}
+    secrets: inherit
