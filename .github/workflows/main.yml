@@ -365,6 +365,68 @@ jobs:
           git tag -a "$TAG" -m "$VERSION"
           git push origin "refs/tags/$TAG"
 
+  # LDEV-6602: publish every final, ALPHA, BETA and RC build as a GitHub release with its .lex files attached,
+  # so downloads can be served from GitHub releases. -SNAPSHOT builds get no GitHub release.
+  # Separate job, so a failure here never blocks the Maven Central or S3 deploy.
+  github-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, deploy]
+    if: needs.build.outputs.deploy == 'true' && !endsWith(needs.build.outputs.version, '-SNAPSHOT')
+    permissions:
+      # create the release (and the tag of a qualifier version) and upload its assets
+      contents: write
+    steps:
+      # the same files the S3 job uploads (built by the build job with the published version)
+      - name: Download published extension
+        uses: actions/download-artifact@v8
+        with:
+          name: redis-s3
+          path: release-files
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
+          IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mapfile -t FILES < <(find release-files -type f -name "*-${VERSION}.lex" -o -type f -name "*-${VERSION}.lite.lex" | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "::error::no .lex files for $VERSION found"; find release-files -type f; exit 1
+          fi
+          printf 'Asset: %s\n' "${FILES[@]}"
+
+          # the release tag is the exact published version. A final release (4.2.0.3) reuses the build tag the deploy job
+          # pushed, a qualifier version (4.2.0.3-RC) gets its own tag on the same commit. Qualifier tags do not match
+          # the build number lookup (^BASE\.([0-9]+)$) in "Resolve next revision".
+          if [[ "$VERSION" == *-* ]]; then
+            PRE=(--prerelease --latest=false)
+          elif [ "$IS_DEFAULT_BRANCH" == "true" ]; then
+            PRE=(--latest)
+          else
+            PRE=(--latest=false)
+          fi
+          if [ "$VERSION" == "$TAG" ]; then
+            TARGET=(--verify-tag)
+          else
+            # creates the tag on this commit if it does not exist yet
+            TARGET=(--target "$GITHUB_SHA")
+          fi
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists - uploading assets again"
+            gh release upload "$VERSION" "${FILES[@]}" --clobber
+          else
+            echo "Creating release $VERSION ${PRE[*]} ${TARGET[*]}"
+            gh release create "$VERSION" "${FILES[@]}" "${PRE[@]}" "${TARGET[@]}" \
+              --title "$VERSION" \
+              --notes "Build $VERSION from commit $GITHUB_SHA, published by $RUN_URL"
+          fi
+
   # upload the published build to cdn.lucee.org in Maven layout, LDEV-6568.
   # Cut-off rules (SNAPSHOTs stop on 2027-03-01) live in the called workflow.
   s3:
