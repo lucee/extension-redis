@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [LDEV-6734](https://luceeserver.atlassian.net/browse/LDEV-6734) near cache no longer blocks requests while the Redis endpoint is down — a cache miss or command now fails fast with the connection error instead of waiting up to 100 seconds for the background drain; the drain retries with an increasing delay (1s up to 10s) instead of every second, logs the error once per outage and logs when the connection is restored
 - [LDEV-6541](https://luceeserver.atlassian.net/browse/LDEV-6541) connect to Redis via a Unix domain socket — new optional `socket` setting ("Socket path" in the admin) with the path to the socket file; when set, `host`, `port` and `ssl` are ignored. Requires Java 16+.
 - a connection whose `AUTH`/`SELECT` fails during creation is now closed instead of being left open
 - [LDEV-6538](https://luceeserver.atlassian.net/browse/LDEV-6538) wildcard filters in `cacheClear()`, `cacheGetAllIds()` and `cacheGetAll()` are now lowercased like the keys, so filters with uppercase characters (e.g. `Users:Active:*`) match again
