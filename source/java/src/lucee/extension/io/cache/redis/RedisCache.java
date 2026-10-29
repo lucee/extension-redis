@@ -927,6 +927,16 @@ public class RedisCache extends CacheSupport implements Command {
 		private final Object tokenAddToNear = new Object();
 		private final Object tokenAddToCache = new Object();
 
+		// Retry delay after a failed drain: starts at the minimum and doubles on every consecutive failure
+		// up to the maximum, so a Redis endpoint that is down is not hammered once a second (LDEV-6734).
+		private static final long RETRY_DELAY_MIN = 1000L;
+		private static final long RETRY_DELAY_MAX = 10000L;
+
+		// true while the drain thread cannot write to Redis (endpoint down); volatile, read by the request threads in doJoin.
+		private volatile boolean drainFailing = false;
+		private long retryDelay = RETRY_DELAY_MIN;
+		private long failureCount = 0;
+
 		public Storage(RedisCache cache) {
 			this.cache = cache;
 			this.entries = new ConcurrentHashMap<>();
@@ -944,7 +954,9 @@ public class RedisCache extends CacheSupport implements Command {
 		public void doJoin(long count, boolean one) {
 
 			long startCurr = getCurrent();
-			if (startCurr > count || drainQueue.isEmpty()) {
+			// While the drain thread cannot reach Redis nothing will be drained, waiting would only block the
+			// caller (up to 100 seconds) for no result. Go directly to Redis, which fails fast with the real error (LDEV-6734).
+			if (drainFailing || startCurr > count || drainQueue.isEmpty()) {
 				return;
 			}
 
@@ -960,7 +972,7 @@ public class RedisCache extends CacheSupport implements Command {
 				if (one && startCurr < curr) {
 					break;
 				}
-				if (curr > count || drainQueue.isEmpty()) {
+				if (drainFailing || curr > count || drainQueue.isEmpty()) {
 					break;
 				}
 				synchronized (tokenAddToCache) {
@@ -1007,6 +1019,7 @@ public class RedisCache extends CacheSupport implements Command {
 							throw t;
 						}
 						entries.remove(wkey, entry);
+						onDrainSuccess();
 						synchronized (tokenAddToCache) {
 							tokenAddToCache.notifyAll();
 						}
@@ -1020,17 +1033,46 @@ public class RedisCache extends CacheSupport implements Command {
 					}
 				}
 				catch (Throwable e) {
-					if (cache.log != null) cache.log.error("redis-cache", e);
+					onDrainFailure(e);
 					synchronized (this) {
 						try {
-							this.wait(1000); // slow down in case of an issue
+							this.wait(retryDelay); // slow down in case of an issue
 						}
 						catch (Exception ie) {
 							if (cache.log != null) cache.log.error("redis-cache", ie);
 						}
 					}
+					// let a waiting caller re-evaluate now that the drain state changed
+					synchronized (tokenAddToCache) {
+						tokenAddToCache.notifyAll();
+					}
 				}
 			}
+		}
+
+		private void onDrainSuccess() {
+			if (drainFailing) {
+				if (cache.log != null) cache.log.info("redis-cache", "connection to Redis restored, near cache writes are drained again (after " + failureCount + " failed attempts)");
+				drainFailing = false;
+			}
+			retryDelay = RETRY_DELAY_MIN;
+			failureCount = 0;
+		}
+
+		private void onDrainFailure(Throwable t) {
+			failureCount++;
+			boolean first = !drainFailing;
+			drainFailing = true;
+			if (cache.log != null) {
+				// log the full error only once per outage, the following attempts only at debug level, otherwise the log is flooded (LDEV-6734)
+				if (first) {
+					cache.log.error("redis-cache", "unable to write near cache entries to Redis, " + entries.size() + " entries pending, retrying in the background with an increasing delay (up to "
+							+ RETRY_DELAY_MAX + "ms)");
+					cache.log.error("redis-cache", t);
+				}
+				else cache.log.debug("redis-cache", "Redis still unreachable (attempt " + failureCount + ", " + entries.size() + " entries pending): " + t.getMessage());
+			}
+			if (!first) retryDelay = Math.min(retryDelay * 2, RETRY_DELAY_MAX);
 		}
 
 		private static final class ByteArrayWrapper {
