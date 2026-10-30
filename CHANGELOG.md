@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.3.0 (unreleased)
 
 - [LDEV-4389](https://luceeserver.atlassian.net/browse/LDEV-4389) optional per-cache `keyPrefix` setting ("Key Prefix" in the admin) so several caches can share one Redis: keys are stored as `<prefix>:<key>`, the prefix is stripped from the keys, ids and entries returned, and `cacheClear()`, clear by filter and the key listings only touch the keys with that prefix. Keys are now listed with `SCAN` instead of `KEYS`. Without a prefix nothing changes.
 - [LDEV-6734](https://luceeserver.atlassian.net/browse/LDEV-6734) near cache no longer blocks requests while the Redis endpoint is down — a cache miss or command now fails fast with the connection error instead of waiting up to 100 seconds for the background drain; the drain retries with an increasing delay (1s up to 10s) instead of every second, logs the error once per outage and logs when the connection is restored

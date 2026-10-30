@@ -14,7 +14,7 @@
              Every push to the release branch gets -Drevision=base.N[qualifier] from GitHub Actions, N = highest existing build + 1,
              and publishes it (-SNAPSHOT to the Central snapshot repository).
              For a release candidate or final release set the qualifier to -RC or empty (or pick it in a manual run), see README.md. -->
-        <extension.version.base>4.2.0</extension.version.base>
+        <extension.version.base>4.3.0</extension.version.base>
         <extension.version.build>0</extension.version.build>
         <extension.version.qualifier>-SNAPSHOT</extension.version.qualifier>
         <revision>${extension.version.base}.${extension.version.build}${extension.version.qualifier}</revision>
