@@ -7,7 +7,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -65,6 +67,16 @@ public class RedisCache extends CacheSupport implements Command {
 	private String socketPath;
 
 	private String username;
+
+	/**
+	 * Optional key prefix (LDEV-4389), set from the `keyPrefix` init argument. When set, every key this cache
+	 * reads or writes is stored as `<keyPrefix><key>`, and clear/keys/entries/remove(filter) only touch keys with that
+	 * prefix, so several caches can share one Redis without seeing (or clearing) each other's keys.
+	 * null (default) means no prefix: keys are stored as they always were.
+	 */
+	private String keyPrefix;
+	private byte[] keyPrefixBytes;
+
 	/**
 	 * Whether the near-cache (async drain thread + local read cache) is enabled.
 	 * Set from the `nearCache` init argument; defaults to true (existing behaviour).
@@ -178,6 +190,19 @@ public class RedisCache extends CacheSupport implements Command {
 		defaultExpire = caster.toIntValue(arguments.get("timeToLiveSeconds", null), 0);
 
 		databaseIndex = caster.toIntValue(arguments.get("databaseIndex", null), -1);
+
+		// key prefix (LDEV-4389): trimmed, and a separator is appended unless the value already ends with one
+		keyPrefix = caster.toString(arguments.get("keyPrefix", null), null);
+		if (Util.isEmpty(keyPrefix, true)) {
+			keyPrefix = null;
+			keyPrefixBytes = null;
+		}
+		else {
+			keyPrefix = keyPrefix.trim();
+			if (!keyPrefix.endsWith(":") && !keyPrefix.endsWith("/") && !keyPrefix.endsWith(".")) keyPrefix += ":";
+			keyPrefixBytes = keyPrefix.getBytes(Coder.UTF8);
+		}
+
 		String logName = caster.toString(arguments.get("log", null), null);
 		if (!Util.isEmpty(logName, true) && config != null) {
 			logName = logName.trim();
@@ -186,7 +211,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 		if (log != null) {
 			log.debug("redis-cache", "configuration: host:" + host + ";port:" + port + ";socket:" + socketPath + ";socketTimeout:" + socketTimeout + ";liveTimeout:" + liveTimeout + ";idleTimeout:"
-					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";");
+					+ idleTimeout + ";username:" + username + ";password:" + password + ";defaultExpire:" + defaultExpire + ";databaseIndex:" + databaseIndex + ";keyPrefix:" + keyPrefix + ";");
 		}
 
 		RedisPoolListener listener = new RedisPoolListenerNotifyOnReturn(token);
@@ -270,7 +295,7 @@ public class RedisCache extends CacheSupport implements Command {
 	@Override
 	public CacheEntry getCacheEntry(String skey) throws IOException {
 		long cnt = counter();
-		byte[] bkey = Coder.toKey(skey);
+		byte[] bkey = toBKey(skey);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
@@ -364,7 +389,7 @@ public class RedisCache extends CacheSupport implements Command {
 	@Override
 	public CacheEntry getCacheEntry(String skey, CacheEntry defaultValue) {
 		long cnt = counter();
-		byte[] bkey = Coder.toKey(skey);
+		byte[] bkey = toBKey(skey);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) {
@@ -426,7 +451,7 @@ public class RedisCache extends CacheSupport implements Command {
 		else {
 			exp = defaultExpire;
 		}
-		byte[] bkey = Coder.toKey(key);
+		byte[] bkey = toBKey(key);
 
 		if (async) {
 			storage.put(bkey, val, exp, cnt);
@@ -461,7 +486,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 	@Override
 	public boolean contains(String key) throws IOException {
-		byte[] bkey = Coder.toKey(key);
+		byte[] bkey = toBKey(key);
 		if (async) {
 			NearCacheEntry val = storage.get(bkey);
 			if (val != null) return true;
@@ -486,7 +511,7 @@ public class RedisCache extends CacheSupport implements Command {
 
 		Redis conn = getConnection();
 		try {
-			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKey(key)));
+			return engine.getCastUtil().toBooleanValue(conn.call("DEL", toBKey(key)));
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -503,7 +528,7 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			return engine.getCastUtil().toBooleanValue(conn.call("DEL", Coder.toKeys(keys)));
+			return engine.getCastUtil().toBooleanValue(conn.call("DEL", toBKeys(keys)));
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -541,7 +566,7 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			return toList((List<byte[]>) conn.call("KEYS", "*"));
+			return toListStripPrefix(scan(conn, getPatternWithPrefix("*")));
 		}
 		catch (Exception e) {
 			invalidateConnection(conn);
@@ -577,15 +602,16 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<byte[]> _bkeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*");
+		List<byte[]> skeys = scan(conn, getPatternWithPrefix(isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*"));
 		List<byte[]> list = new ArrayList<byte[]>();
-		if (skeys == null || skeys.size() == 0) return list;
+		if (skeys.size() == 0) return list;
 
 		Iterator<byte[]> it = skeys.iterator();
 		byte[] key;
 		while (it.hasNext()) {
 			key = it.next();
-			if (all || filter.accept(new String(key, UTF8))) list.add(key);
+			// the filter works with the key as the caller knows it, so without the prefix
+			if (all || filter.accept(stripPrefix(key))) list.add(key);
 		}
 		return list;
 	}
@@ -593,15 +619,145 @@ public class RedisCache extends CacheSupport implements Command {
 	private List<String> _skeys(Redis conn, CacheKeyFilter filter) throws IOException {
 		boolean isWildCardFilter = CacheUtil.isWildCardFiler(filter);
 		boolean all = isWildCardFilter || CacheUtil.allowAll(filter);
-		List<byte[]> skeys = (List<byte[]>) conn.call("KEYS", isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*");
+		List<byte[]> skeys = scan(conn, getPatternWithPrefix(isWildCardFilter ? Coder.toKeyPattern(filter.toPattern()) : "*"));
 		List<String> list = new ArrayList<String>();
-		Iterator<byte[]> it = skeys.iterator();
-		if (skeys == null || skeys.size() == 0) return list;
+		if (skeys.size() == 0) return list;
 
-		byte[] key;
-		while (it.hasNext()) {
-			key = it.next();
-			if (all || filter.accept(new String(key, UTF8))) list.add(new String(key, UTF8));
+		String key;
+		for (byte[] bkey: skeys) {
+			key = stripPrefix(bkey);
+			if (all || filter.accept(key)) list.add(key);
+		}
+		return list;
+	}
+
+	/**
+	 * Returns all keys matching the given glob pattern. Uses SCAN instead of KEYS, so a large keyspace
+	 * is walked in small steps and does not block the Redis server for the whole duration (LDEV-4389).
+	 * SCAN can return a key more than once, the result is de-duplicated.
+	 */
+	private List<byte[]> scan(Redis conn, String pattern) throws IOException {
+		Set<ByteKey> found = new LinkedHashSet<ByteKey>();
+		String cursor = "0";
+		do {
+			Object res = conn.call("SCAN", cursor, "MATCH", pattern, "COUNT", "1000");
+			if (!(res instanceof List) || ((List<?>) res).size() < 2) throw new IOException("unexpected response from Redis for the SCAN command");
+			List<?> arr = (List<?>) res;
+			cursor = new String((byte[]) arr.get(0), Coder.UTF8);
+			List<byte[]> batch = (List<byte[]>) arr.get(1);
+			if (batch != null) {
+				for (byte[] k: batch) {
+					found.add(new ByteKey(k));
+				}
+			}
+		}
+		while (!"0".equals(cursor));
+
+		List<byte[]> list = new ArrayList<byte[]>(found.size());
+		for (ByteKey k: found) {
+			list.add(k.data);
+		}
+		return list;
+	}
+
+	private static final class ByteKey {
+		private final byte[] data;
+
+		private ByteKey(byte[] data) {
+			this.data = data;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			return o instanceof ByteKey && Arrays.equals(data, ((ByteKey) o).data);
+		}
+
+		@Override
+		public int hashCode() {
+			return Arrays.hashCode(data);
+		}
+	}
+
+	/**
+	 * Key as stored in Redis: normalized like before (trimmed, lowercase) and with the key prefix in front (LDEV-4389).
+	 */
+	private byte[] toBKey(String key) {
+		return applyPrefix(Coder.toKey(key));
+	}
+
+	private byte[][] toBKeys(String[] keys) {
+		byte[][] arr = Coder.toKeys(keys);
+		if (keyPrefixBytes != null) {
+			for (int i = 0; i < arr.length; i++) {
+				arr[i] = applyPrefix(arr[i]);
+			}
+		}
+		return arr;
+	}
+
+	/**
+	 * Adds the key prefix (if there is one) in front of the key.
+	 */
+	protected byte[] applyPrefix(byte[] key) {
+		if (keyPrefixBytes == null) return key;
+		byte[] prefixed = new byte[keyPrefixBytes.length + key.length];
+		System.arraycopy(keyPrefixBytes, 0, prefixed, 0, keyPrefixBytes.length);
+		System.arraycopy(key, 0, prefixed, keyPrefixBytes.length, key.length);
+		return prefixed;
+	}
+
+	/**
+	 * Removes the key prefix (if there is one) from a key as stored in Redis and returns it as a String.
+	 */
+	protected String stripPrefix(byte[] key) {
+		int len = prefixLength(key);
+		return len == 0 ? new String(key, Coder.UTF8) : new String(key, len, key.length - len, Coder.UTF8);
+	}
+
+	/**
+	 * Length of the key prefix in bytes if the key starts with it, otherwise 0.
+	 */
+	int prefixLength(byte[] key) {
+		if (keyPrefixBytes == null || key.length < keyPrefixBytes.length) return 0;
+		for (int i = 0; i < keyPrefixBytes.length; i++) {
+			if (key[i] != keyPrefixBytes[i]) return 0;
+		}
+		return keyPrefixBytes.length;
+	}
+
+	/**
+	 * Length of the key prefix in bytes, 0 if there is none.
+	 */
+	int prefixLength() {
+		return keyPrefixBytes == null ? 0 : keyPrefixBytes.length;
+	}
+
+	/**
+	 * Puts the key prefix in front of a glob pattern for SCAN. Glob characters in the prefix itself are escaped,
+	 * so they match literally and the pattern can never reach into the keys of another prefix.
+	 */
+	protected String getPatternWithPrefix(String pattern) {
+		if (keyPrefix == null) return pattern;
+		StringBuilder sb = new StringBuilder(keyPrefix.length() + pattern.length() + 4);
+		char c;
+		for (int i = 0; i < keyPrefix.length(); i++) {
+			c = keyPrefix.charAt(i);
+			if (c == '*' || c == '?' || c == '[' || c == ']' || c == '\\') sb.append('\\');
+			sb.append(c);
+		}
+		return sb.append(pattern).toString();
+	}
+
+	public String getKeyPrefix() {
+		return keyPrefix;
+	}
+
+	private List<String> toListStripPrefix(Collection<byte[]> keys) {
+		List<String> list = new ArrayList<String>();
+		if (keys != null) {
+			for (byte[] key: keys) {
+				list.add(stripPrefix(key));
+			}
 		}
 		return list;
 	}
@@ -758,8 +914,8 @@ public class RedisCache extends CacheSupport implements Command {
 		if (async) storage.doJoin(counter(), false);
 		Redis conn = getConnection();
 		try {
-			List<byte[]> bkeys = (List<byte[]>) conn.call("KEYS", "*");
-			if (bkeys == null || bkeys.size() == 0) return 0;
+			List<byte[]> bkeys = scan(conn, getPatternWithPrefix("*"));
+			if (bkeys.size() == 0) return 0;
 			return engine.getCastUtil().toIntValue(conn.call("DEL", bkeys), 0);
 		}
 		catch (Exception e) {
@@ -990,7 +1146,7 @@ public class RedisCache extends CacheSupport implements Command {
 		public void put(byte[] bkey, Object val, int exp, long count) throws IOException {
 			// Serialise now so subsequent caller mutation cannot reach the cache (LDEV-4413 write-side).
 			byte[] bytes = Coder.serialize(val);
-			NearCacheEntry entry = new NearCacheEntry(bkey, null, exp, count, bytes);
+			NearCacheEntry entry = new NearCacheEntry(bkey, null, exp, count, bytes).keyOffset(cache.prefixLength());
 			ByteArrayWrapper wkey = new ByteArrayWrapper(bkey);
 			entries.put(wkey, entry);
 			drainQueue.offer(wkey);

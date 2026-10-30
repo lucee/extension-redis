@@ -5,7 +5,6 @@ import java.util.Date;
 
 import lucee.commons.io.cache.CacheEntry;
 import lucee.extension.io.cache.redis.InfoParser.DebugObject;
-import lucee.extension.io.cache.util.Coder;
 import lucee.loader.engine.CFMLEngineFactory;
 import lucee.runtime.type.Struct;
 
@@ -61,7 +60,7 @@ public class RedisCacheEntry implements CacheEntry {
 
 	@Override
 	public String getKey() {
-		return Coder.toKey(bkey);
+		return cache.stripPrefix(bkey);
 	}
 
 	@Override

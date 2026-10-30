@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- [LDEV-4389](https://luceeserver.atlassian.net/browse/LDEV-4389) optional per-cache `keyPrefix` setting ("Key Prefix" in the admin) so several caches can share one Redis: keys are stored as `<prefix>:<key>`, the prefix is stripped from the keys, ids and entries returned, and `cacheClear()`, clear by filter and the key listings only touch the keys with that prefix. Keys are now listed with `SCAN` instead of `KEYS`. Without a prefix nothing changes.
 - [LDEV-6734](https://luceeserver.atlassian.net/browse/LDEV-6734) near cache no longer blocks requests while the Redis endpoint is down — a cache miss or command now fails fast with the connection error instead of waiting up to 100 seconds for the background drain; the drain retries with an increasing delay (1s up to 10s) instead of every second, logs the error once per outage and logs when the connection is restored
 - [LDEV-6541](https://luceeserver.atlassian.net/browse/LDEV-6541) connect to Redis via a Unix domain socket — new optional `socket` setting ("Socket path" in the admin) with the path to the socket file; when set, `host`, `port` and `ssl` are ignored. Requires Java 16+.
 - a connection whose `AUTH`/`SELECT` fails during creation is now closed instead of being left open

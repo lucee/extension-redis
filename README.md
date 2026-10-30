@@ -32,9 +32,33 @@ Add some configuration:
 * If you like you can use the driver to store the Session Scope. If this is your intention you can flag "Allow to use this cache as client/session storage."
 * Server/Host => Tells Lucee how to connect to Redis. By default this is set to localhost:6379.
 Please tune this following your environment's needs. Note that the driver actually support a single Redis Server.
-* Namespace => choose the namespace that will be used to avoid keys name clashing between differents cache instances.
+* Key Prefix => optional, avoids key clashes between different caches or applications that share one Redis, see "Sharing one Redis between caches (key prefix)" below.
 
 All set. You are done.
+
+### Sharing one Redis between caches (key prefix)
+
+By default all keys of a cache live at the top level of the Redis database, so two caches that point to the same Redis (and the same `databaseIndex`) share their keys, and `cacheClear()` on one of them removes the keys of the other. Set the optional `keyPrefix` ("Key Prefix" in the admin, `custom.keyPrefix` in the cache definition) to give each cache its own namespace:
+
+```
+this.cache.connections["appCache"] = {
+	class: "lucee.extension.io.cache.redis.simple.RedisCache",
+	custom: {
+		host: "localhost",
+		port: 6379,
+		keyPrefix: "myapp"   // keys are stored in Redis as "myapp:<key>"
+	}
+};
+```
+
+* The value is trimmed, and a `:` is appended unless it already ends with `:`, `/` or `.`.
+* The prefix is added to every key the cache reads or writes, and removed again from the keys, ids and entries the cache returns. Your code never sees it.
+* `cacheClear()`, clearing by filter, `cacheGetAllIds()`, `cacheGetAll()` and `cacheCount()` only touch the keys with this prefix, other caches on the same Redis are not affected. They use `SCAN` (not `KEYS`), so a large keyspace does not block the Redis server.
+* Glob characters in the prefix (`*`, `?`, `[`, `]`, `\`) are taken literally.
+* Without a prefix nothing changes, the keys are stored as before and the cache sees all keys of the database.
+* Changing the prefix of a cache that already holds data makes the existing keys unreachable for it (they stay in Redis until they expire or are removed).
+* `redisCommand()` and the other low level commands are sent to Redis as they are, a key you pass there is not prefixed.
+* With Redis Cluster, `SCAN` only covers the node the connection is made to, the same limitation `KEYS` had.
 
 ### Connecting via a Unix domain socket
 

@@ -16,6 +16,8 @@ public class NearCacheEntry implements CacheEntry {
 	private long created;
 	private byte[] serialized;
 	private long count;
+	// length of the cache's key prefix inside key (LDEV-4389), so getKey() returns the key the caller knows
+	private int keyOffset;
 
 	public NearCacheEntry(byte[] key, Object val, int exp, long count) {
 		this.key = key;
@@ -42,7 +44,7 @@ public class NearCacheEntry implements CacheEntry {
 	 */
 	public NearCacheEntry copy(ClassLoader cl) throws IOException {
 		byte[] bytes = serialized();
-		return new NearCacheEntry(key, Coder.evaluate(cl, bytes), exp, count, bytes);
+		return new NearCacheEntry(key, Coder.evaluate(cl, bytes), exp, count, bytes).keyOffset(keyOffset);
 	}
 
 	@Override
@@ -62,7 +64,12 @@ public class NearCacheEntry implements CacheEntry {
 
 	@Override
 	public String getKey() {
-		return Coder.toKey(key);
+		return keyOffset == 0 ? Coder.toKey(key) : new String(key, keyOffset, key.length - keyOffset, Coder.UTF8);
+	}
+
+	NearCacheEntry keyOffset(int keyOffset) {
+		this.keyOffset = keyOffset;
+		return this;
 	}
 
 	public byte[] getByteKey() {
