@@ -81,6 +81,15 @@ component extends="Cache" {
 		,field("Time to live in seconds","timeToLiveSeconds","0",true,"Sets the timeout to live for an element before it expires. If all fields are set to 0 the element live as long the server live.","time")
 		
 
+		,group("Key Prefix","Share one Redis between several caches or applications without them seeing each other's keys.")
+		,field(displayName = "Key Prefix",
+			name = "keyPrefix",
+			defaultValue = "",
+			required = false,
+			description = "Optional prefix for every key of this cache (for example myapp). The key is stored in Redis as prefix:key, and clearing, listing and removing by filter only touch the keys with this prefix. A colon is appended automatically unless the prefix already ends with a colon, a slash or a dot. Leave empty to use no prefix. Changing the prefix of a cache with existing data makes the existing keys unreachable for this cache.",
+			type = "text"
+		)
+
 		,group("Pool","Connection to Redis are handled within a Pool, the following settings allows you to configure this pool.")
 		,field(displayName = "Max Total",
 			name = "maxTotal",
