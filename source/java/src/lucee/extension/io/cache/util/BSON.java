@@ -55,6 +55,7 @@ import lucee.runtime.op.Castable;
 import lucee.runtime.type.Collection;
 import lucee.runtime.type.Collection.Key;
 import lucee.runtime.type.ObjectWrap;
+import lucee.runtime.type.Query;
 import lucee.runtime.type.Struct;
 
 public class BSON {
@@ -82,6 +83,20 @@ public class BSON {
 	private static final Object[] EMPTY_OBJ = new Object[0];
 
 	public static final String IK_STORAGEVALUE_KEY = "iksvk";
+
+	/**
+	 * LDEV-6894: marker for a query stored as a BSON document. A query is a collection but not a
+	 * struct, so without this it was written as an array of row structs and came back as an array.
+	 * Layout: { QUERY_KEY: version, name, columns: [..], types: [..], recordcount, data: [[column
+	 * values], ..] } (column major, one array per column).
+	 */
+	public static final String QUERY_KEY = "__luceeQuery__";
+	private static final int QUERY_FORMAT_VERSION = 1;
+	private static final String QUERY_NAME = "name";
+	private static final String QUERY_COLUMNS = "columns";
+	private static final String QUERY_TYPES = "types";
+	private static final String QUERY_RECORDCOUNT = "recordcount";
+	private static final String QUERY_DATA = "data";
 
 	private static final Class<?>[] IK_STOARE_VALUE_INIT = new Class[] { Map.class, byte[].class, long.class };
 	private static final Class<?>[] IK_STOARE_ITEM_INIT = new Class[] { Object.class, long.class };
@@ -185,6 +200,7 @@ public class BSON {
 
 	private static Object _toObject(BsonValue bv, CFMLEngine engine) throws IOException {
 		if (bv instanceof BsonDocument) {
+			if (isQuery((BsonDocument) bv)) return toQuery((BsonDocument) bv, engine != null ? engine : CFMLEngineFactory.getInstance());
 			if (engine != null) return toStruct((BsonDocument) bv, engine);
 			return toMap((BsonDocument) bv);
 		}
@@ -290,6 +306,19 @@ public class BSON {
 
 		// complex value
 
+		// LDEV-6894: a query is a Collection, but must not be written as an array of row structs
+		if (o instanceof Query) {
+			try {
+				if (inside.contains(o))
+					throw new IOException("object cannot be serialized, betcause it has a internal relation to itself, one object is pointing to itself of one of its parents!");
+				inside.add(o);
+				return _toBsonDocumentQuery((Query) o, inside, allowObjectSerialisation);
+			}
+			finally {
+				inside.remove(o);
+			}
+		}
+
 		if (o instanceof Collection) {
 			try {
 
@@ -374,6 +403,104 @@ public class BSON {
 			doc.append(e.getKey().toString(), toBsonValue(e.getValue(), inside, allowObjectSerialisation));
 		}
 		return doc;
+	}
+
+	private static BsonDocument _toBsonDocumentQuery(Query qry, Set<Object> inside, boolean allowObjectSerialisation) throws IOException, PageException {
+		Key[] columns = qry.getColumnNames();
+		int recordcount = qry.getRecordcount();
+		Map<Key, String> types = null;
+		try {
+			types = qry.getTypesAsMap();
+		}
+		catch (Exception e) {
+		}
+
+		BsonArray bColumns = new BsonArray();
+		BsonArray bTypes = new BsonArray();
+		BsonArray bData = new BsonArray();
+		BsonArray bColumn;
+		String type;
+		for (Key column: columns) {
+			bColumns.add(new BsonString(column.getString()));
+			type = types == null ? null : types.get(column);
+			bTypes.add(Util.isEmpty(type, true) ? BsonNull.VALUE : new BsonString(type));
+			bColumn = new BsonArray();
+			for (int row = 1; row <= recordcount; row++) {
+				bColumn.add(toBsonValue(qry.getAt(column, row, null), inside, allowObjectSerialisation));
+			}
+			bData.add(bColumn);
+		}
+
+		BsonDocument doc = new BsonDocument();
+		// the marker must be the first key, see isQuery
+		doc.append(QUERY_KEY, new BsonInt32(QUERY_FORMAT_VERSION));
+		String name = qry.getName();
+		doc.append(QUERY_NAME, name == null ? BsonNull.VALUE : new BsonString(name));
+		doc.append(QUERY_COLUMNS, bColumns);
+		doc.append(QUERY_TYPES, bTypes);
+		doc.append(QUERY_RECORDCOUNT, new BsonInt32(recordcount));
+		doc.append(QUERY_DATA, bData);
+		return doc;
+	}
+
+	private static boolean isQuery(BsonDocument doc) {
+		if (doc.isEmpty() || !QUERY_KEY.equals(doc.getFirstKey())) return false;
+		BsonValue v = doc.get(QUERY_KEY);
+		if (v == null || !v.isInt32()) return false;
+		BsonValue cols = doc.get(QUERY_COLUMNS);
+		BsonValue data = doc.get(QUERY_DATA);
+		BsonValue rc = doc.get(QUERY_RECORDCOUNT);
+		return cols != null && cols.isArray() && data != null && data.isArray() && rc != null && rc.isInt32() && cols.asArray().size() == data.asArray().size();
+	}
+
+	private static Query toQuery(BsonDocument doc, CFMLEngine engine) throws IOException {
+		try {
+			BsonArray bColumns = doc.getArray(QUERY_COLUMNS);
+			BsonValue bTypesValue = doc.get(QUERY_TYPES);
+			BsonArray bTypes = bTypesValue != null && bTypesValue.isArray() ? bTypesValue.asArray() : null;
+			BsonArray bData = doc.getArray(QUERY_DATA);
+			int recordcount = doc.getInt32(QUERY_RECORDCOUNT).getValue();
+			BsonValue bName = doc.get(QUERY_NAME);
+			String name = bName != null && bName.isString() ? bName.asString().getValue() : "";
+
+			Key[] columns = new Key[bColumns.size()];
+			String[] types = new String[columns.length];
+			boolean hasTypes = bTypes != null && bTypes.size() == columns.length;
+			for (int i = 0; i < columns.length; i++) {
+				columns[i] = engine.getCastUtil().toKey(bColumns.get(i).asString().getValue());
+				if (hasTypes) {
+					BsonValue t = bTypes.get(i);
+					if (t.isString()) types[i] = t.asString().getValue();
+					else hasTypes = false;
+				}
+			}
+
+			Query qry = null;
+			if (hasTypes) {
+				try {
+					qry = engine.getCreationUtil().createQuery(columns, types, recordcount, name);
+				}
+				catch (Exception e) {
+					// unknown type name, fall back to an untyped query
+				}
+			}
+			if (qry == null) qry = engine.getCreationUtil().createQuery(columns, recordcount, name);
+
+			BsonArray bColumn;
+			for (int i = 0; i < columns.length; i++) {
+				bColumn = bData.get(i).asArray();
+				for (int row = 1; row <= recordcount && row <= bColumn.size(); row++) {
+					qry.setAt(columns[i], row, _toObject(bColumn.get(row - 1), engine));
+				}
+			}
+			return qry;
+		}
+		catch (IOException ioe) {
+			throw ioe;
+		}
+		catch (Exception e) {
+			throw engine.getExceptionUtil().toIOException(e);
+		}
 	}
 
 	private static BsonDocument _toBsonDocumentMap(Map<?, ?> map, Set<Object> inside, boolean allowObjectSerialisation) throws IOException, PageException {
