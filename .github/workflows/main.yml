@@ -1,5 +1,11 @@
 name: Java CI
 
+# Push to master publishes a new numbered -SNAPSHOT to maven.lucee-services.com, never Maven Central.
+# A manual run with deploy ticked publishes the next build number with the chosen qualifier:
+#   release (no qualifier): Maven Central and maven.lucee-services.com, plus a GitHub release
+#   ALPHA / BETA / RC:      signed install, maven.lucee-services.com and a GitHub pre-release, never Central
+#   SNAPSHOT:               signed install and maven.lucee-services.com, never Central
+# Build numbers come from git tags, Maven Central, the Central snapshot repository, and maven.lucee-services.com.
 on:
   push:
     branches: [master]
@@ -7,11 +13,11 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Publish (a new build number) to Maven Central'
+        description: 'Publish a new build number. Finals go to Maven Central; ALPHA, BETA, RC and SNAPSHOT go to maven.lucee-services.com only'
         type: boolean
         default: false
       qualifier:
-        description: 'Qualifier for this run. "pom" keeps extension.version.qualifier from pom.xml (-SNAPSHOT); pick RC, BETA, ALPHA or release (none) to publish a release candidate or final release from the current code'
+        description: 'Qualifier for this run. "pom" keeps extension.version.qualifier from pom.xml (-SNAPSHOT). SNAPSHOT, ALPHA, BETA and RC are published to maven.lucee-services.com, never Maven Central. "release" (no qualifier) is the final and goes to Maven Central'
         type: choice
         options: [pom, SNAPSHOT, ALPHA, BETA, RC, release]
         default: pom
@@ -97,14 +103,17 @@ jobs:
 
           git fetch --tags --force origin 2>/dev/null || true
 
-          # highest build of this base, from git tags (base.N), Maven Central and the Central snapshot repository (base.N[-QUALIFIER]).
-          # Both are checked, so a version published without a tag (e.g. 4.2.0.0-ALPHA) is never built twice.
+          # highest build of this base, from git tags (base.N), Maven Central, the Central snapshot repository
+          # and maven.lucee-services.com (base.N[-QUALIFIER]). All are checked so a version published without a
+          # tag (e.g. 4.2.0.0-ALPHA) or only to the Lucee Maven repository is never built twice.
           BUILDS=$(git tag -l "${BASE}.*" | sed -nE "s/^${BASE_RE}\.([0-9]+)$/\1/p" || true)
           for url in \
             "https://repo1.maven.org/maven2/org/lucee/redis-extension/maven-metadata.xml" \
             "https://repo1.maven.org/maven2/org/lucee/redis/maven-metadata.xml" \
             "https://central.sonatype.com/repository/maven-snapshots/org/lucee/redis-extension/maven-metadata.xml" \
-            "https://central.sonatype.com/repository/maven-snapshots/org/lucee/redis/maven-metadata.xml"
+            "https://central.sonatype.com/repository/maven-snapshots/org/lucee/redis/maven-metadata.xml" \
+            "https://maven.lucee-services.com/org/lucee/redis-extension/maven-metadata.xml" \
+            "https://maven.lucee-services.com/org/lucee/redis/maven-metadata.xml"
           do
             META=$(curl -fsSL --max-time 30 "$url" 2>/dev/null || true)
             BUILDS="$BUILDS"$'\n'$(printf '%s' "$META" | grep -oE "<version>${BASE_RE}\.[0-9]+([-.][^<]*)?</version>" | sed -E "s#<version>${BASE_RE}\.([0-9]+).*#\1#" || true)
@@ -336,14 +345,15 @@ jobs:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
-          # central-publishing-maven-plugin sends a -SNAPSHOT version to the Central snapshot repository
-          # (https://central.sonatype.com/repository/maven-snapshots/), any other qualifier (-ALPHA, -BETA, -RC or none) to Maven Central.
-          # Everything is signed, snapshots included (same as the snapshots published before).
-          if [[ "$VERSION" == *-SNAPSHOT ]]; then
-            echo "------- Maven Deploy snapshot $VERSION -------";
-            mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
+          # Only a final release (no qualifier) is deployed to Maven Central, using the same ossrh server
+          # id, MAVEN_USERNAME / MAVEN_PASSWORD secrets and maven-settings.xml as the other extensions.
+          # ALPHA, BETA, RC and SNAPSHOT are signed with mvn install and published to maven.lucee-services.com
+          # by the s3 job (same shared extension-s3-upload.yml as MongoDB, HSQLDB and Image). Never Central.
+          if [[ "$VERSION" == *-SNAPSHOT ]] || [[ "$VERSION" =~ -(RC|BETA|ALPHA)$ ]]; then
+            echo "------- Maven Install (signed) $VERSION, Lucee Maven repository (maven.lucee-services.com), never Central -------";
+            mvn -B -e clean install -Dgoal=install -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
           else
-            echo "------- Maven Deploy release $VERSION -------";
+            echo "------- Maven Deploy release $VERSION to Maven Central -------";
             mvn -B -e clean deploy -Dgoal=deploy -DperformRelease=true -Drevision="$VERSION" --settings maven-settings.xml
           fi
 
@@ -366,8 +376,9 @@ jobs:
           git push origin "refs/tags/$TAG"
 
   # LDEV-6602: publish every final, ALPHA, BETA and RC build as a GitHub release with its .lex files attached,
-  # so downloads can be served from GitHub releases. -SNAPSHOT builds get no GitHub release.
-  # Separate job, so a failure here never blocks the Maven Central or S3 deploy.
+  # so downloads can be served from GitHub releases. ALPHA, BETA and RC are marked as pre-releases.
+  # -SNAPSHOT builds get no GitHub release.
+  # Separate job, so a failure here never blocks the Maven Central or Lucee Maven repository upload.
   github-release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
